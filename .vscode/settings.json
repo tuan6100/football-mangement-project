@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "ostream": "cpp",
+        "iostream": "cpp"
+    },
+    "cmake.sourceDirectory": "/home/tuan/Documents/Code/SQL/Project/football/CLI",
+    "git.ignoreLimitWarning": true
+}
