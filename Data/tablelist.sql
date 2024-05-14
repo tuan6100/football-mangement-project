@@ -52,17 +52,16 @@ CREATE TABLE club
 
 CREATE TABLE participation  --updated on 14/5/2024
 (
-    season_id VARCHAR(10) REFERENCES league_held(season_id),
+    season_id VARCHAR(10) REFERENCES season_id(season_id),
     club_id VARCHAR(3) REFERENCES club(club_id),
     state TEXT,
     PRIMARY KEY (season_id, club_id)
 );
 
-CREATE TABLE match  
+CREATE TABLE match     --updated on 14/5/2024
 (
     match_id VARCHAR(20) PRIMARY KEY,
-    league_id VARCHAR(6)  REFERENCES participation(league_id),
-    season VARCHAR(10) REFERENCES participation(season),  
+    season_id VARCHAR(10) REFERENCES league_organ(season_id),  
     round VARCHAR(255),
     date_of_match DATE NOT NULL,
     stadium VARCHAR(255) NOT NULL,
@@ -185,59 +184,6 @@ CREATE TABLE Coaching
 -- CREATE VIEW --
 -- updated on 27/4/2024
 
-CREATE OR REPLACE VIEW premierleague2324 AS 
-(
-    SELECT 
-        club.club_id, club.club_name,
-        SUM(CASE 
-            WHEN home.num_of_goals > away.num_of_goals THEN 3
-            WHEN home.num_of_goals = away.num_of_goals THEN 1
-            ELSE 0
-        END) AS point,
-        (SUM(home.num_of_goals) - SUM(away.num_of_goals)) AS goal_diff,
-        SUM(home.num_of_goals) AS total_goals
-    FROM match
-    INNER JOIN home ON match.match_id = home.match_id
-    INNER JOIN away ON match.match_id = away.match_id
-    INNER JOIN club ON club.club_id = home.club_id
-    WHERE match.league_id = 'EL0001' AND match.season = ""
-    GROUP BY club.club_id
-    ORDER BY point DESC, goal_diff DESC, total_goals DESC
-);
-
-
-CREATE OR REPLACE VIEW premierleague2324_ranking AS
-(
-    SELECT club_id, RANK() OVER (ORDER BY point DESC, goal_diff DESC, total_goals DESC) AS ranking 
-    FROM premierleague
-);
-
-CREATE OR REPLACE VIEW laliga AS 
-(
-    SELECT 
-        club.club_id, club.club_name,
-        SUM(CASE 
-            WHEN home.num_of_goals > away.num_of_goals THEN 3
-            WHEN home.num_of_goals = away.num_of_goals THEN 1
-            ELSE 0
-        END) AS point,
-        (SUM(home.num_of_goals) - SUM(away.num_of_goals)) AS goal_diff,
-        SUM(home.num_of_goals) AS total_goals
-    FROM match
-    INNER JOIN home ON match.match_id = home.match_id
-    INNER JOIN away ON match.match_id = away.match_id
-    INNER JOIN club ON club.club_id = home.club_id
-    WHERE match.league_id = 'SL0001' 
-    GROUP BY club.club_id
-    ORDER BY point DESC, goal_diff DESC, total_goals DESC
-);
-
-CREATE OR REPLACE VIEW laliga_ranking AS
-(
-    SELECT club_id, RANK() OVER (ORDER BY point DESC, goal_diff DESC, total_goals DESC) AS ranking 
-    FROM laliga
-);
-
 CREATE OR REPLACE VIEW premierleague AS 
 (
     SELECT 
@@ -253,7 +199,8 @@ CREATE OR REPLACE VIEW premierleague AS
     INNER JOIN home ON match.match_id = home.match_id
     INNER JOIN away ON match.match_id = away.match_id
     INNER JOIN club ON club.club_id = home.club_id
-    WHERE match.league_id = 'EL0001' 
+    INNER JOIN league_organ ON match.season_id = league_organ.season_id
+    WHERE league_organ.league_id = 'EL0001' AND league_organ.season = '2023-2024'
     GROUP BY club.club_id
     ORDER BY point DESC, goal_diff DESC, total_goals DESC
 );
@@ -280,7 +227,8 @@ CREATE OR REPLACE VIEW laliga AS
     INNER JOIN home ON match.match_id = home.match_id
     INNER JOIN away ON match.match_id = away.match_id
     INNER JOIN club ON club.club_id = home.club_id
-    WHERE match.league_id = 'SL0001' 
+    INNER JOIN league_organ ON match.season_id = league_organ.season_id
+    WHERE league_organ.league_id = 'SL0001' AND league_organ.season = '2023-2024'
     GROUP BY club.club_id
     ORDER BY point DESC, goal_diff DESC, total_goals DESC
 );
@@ -306,7 +254,8 @@ CREATE OR REPLACE VIEW seria AS
     INNER JOIN home ON match.match_id = home.match_id
     INNER JOIN away ON match.match_id = away.match_id
     INNER JOIN club ON club.club_id = home.club_id
-    WHERE match.league_id = 'IL0001' 
+    INNER JOIN league_organ ON match.season_id = league_organ.season_id
+    WHERE league_organ.league_id = 'IL0001' AND league_organ.season = '2023-2024'
     GROUP BY club.club_id
     ORDER BY point DESC, goal_diff DESC, total_goals DESC
 );
@@ -314,7 +263,7 @@ CREATE OR REPLACE VIEW seria AS
 CREATE OR REPLACE VIEW seria_ranking AS
 (
     SELECT club_id, RANK() OVER (ORDER BY point DESC, goal_diff DESC, total_goals DESC) AS ranking 
-    FROM laliga
+    FROM seria
 );
 
 CREATE OR REPLACE VIEW bundesliga AS 
@@ -332,7 +281,8 @@ CREATE OR REPLACE VIEW bundesliga AS
     INNER JOIN home ON match.match_id = home.match_id
     INNER JOIN away ON match.match_id = away.match_id
     INNER JOIN club ON club.club_id = home.club_id
-    WHERE match.league_id = 'GL0001' 
+    INNER JOIN league_organ ON match.season_id = league_organ.season_id
+    WHERE league_organ.league_id = 'GL0001' AND league_organ.season = '2023-2024'
     GROUP BY club.club_id
     ORDER BY point DESC, goal_diff DESC, total_goals DESC
 );
@@ -340,5 +290,5 @@ CREATE OR REPLACE VIEW bundesliga AS
 CREATE OR REPLACE VIEW bundesliga_ranking AS
 (
     SELECT club_id, RANK() OVER (ORDER BY point DESC, goal_diff DESC, total_goals DESC) AS ranking 
-    FROM laliga
+    FROM bundesliga
 );
