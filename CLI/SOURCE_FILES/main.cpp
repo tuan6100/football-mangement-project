@@ -80,24 +80,25 @@ int main()
             {
             case 1:
                   query_1st();   
-                  cout << "Press Enter to continue..." << endl;                 
+                  cout << "Press Tab+Enter to continue..." << endl;                 
                   fflush( stdout );
                   do c = getchar(); while ((c != '\t') && (c != EOF));
                   break;
             
             case 2:
                   query_2nd();   
-                  cout << "Press Enter to continue..." << endl; 
+                  cout << "Press Tab+Enter to continue..." << endl;                 
                   fflush( stdout );
-                  do c = getchar(); while ((c != '\n') && (c != EOF));
+                  do c = getchar(); while ((c != '\t') && (c != EOF));
                   break;
             
-            // case 3:
-            //       query_3rd();   
-            //       cout << "Press any key to continue..." << endl; 
-            //       fflush(stdin);
-            //       getchar();
-            //       break;
+            case 3:
+                  query_3rd();   
+                  cout << "Press Tab+Enter to continue..." << endl;                 
+                  fflush( stdout );
+                  do c = getchar(); while ((c != '\t') && (c != EOF));
+                  break;
+            
 
             case 4:
                   query_4th();   
@@ -122,17 +123,19 @@ int main()
 
             case 7:
                   query_7th();   
-                  cout << "Press Enter to continue..." << endl; 
-                  getchar();
-                  fflush(stdin);
+                  cout << "Press Tab+Enter to continue..." << endl;                 
+                  fflush( stdout );
+                  do c = getchar(); while ((c != '\t') && (c != EOF));
                   break;
             
+            
             case 8:
-                  query_8th();   
-                  cout << "Press Enter to continue..." << endl; 
-                  getchar();
-                  fflush(stdin);
+                  query_8th();
+                  cout << "Press Tab+Enter to continue..." << endl;                 
+                  fflush( stdout );
+                  do c = getchar(); while ((c != '\t') && (c != EOF));
                   break;
+            
                   
             // case 9:
             //       query_9th();   

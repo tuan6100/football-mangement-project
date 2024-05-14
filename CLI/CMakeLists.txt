@@ -12,7 +12,7 @@ file(GLOB MAIN
 
 add_executable(football ${MAIN})
 
-find_package(libpqxx REQUIRED)
+
 target_link_libraries(football PRIVATE ${PQXX_LIBRARIES})
 target_include_directories(football PRIVATE ${PQXX_INCLUDE_DIRS})
 target_link_libraries(football PRIVATE pqxx)

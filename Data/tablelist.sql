@@ -19,13 +19,26 @@ CREATE TABLE nation
     organization VARCHAR             --updated on 7/5/2024
 );
 
-CREATE TABLE league
+CREATE TABLE league         
 (
     league_id VARCHAR(6) PRIMARY KEY,
     league_name VARCHAR(255) NOT NULL,
     formula VARCHAR(255) NOT NULL,
     website VARCHAR(255) NOT NULL,
     nation_id VARCHAR(6) REFERENCES nation(nation_id)
+);
+
+CREATE TABLE league_organ  --updated on 14/5/2024
+(
+    season_id VARCHAR(10) PRIMARY KEY,
+    league_id VARCHAR(6)  REFERENCES league(league_id) NOT NULL,
+    season VARCHAR(10) NOT NULL,  
+    date_start DATE,
+    date_end DATE
+    --  (EPL2324, EL0001, 2023-2024, 11/8/2023, 19/5/2024)
+    --  (LALIGA2324, SL0001, 2023-2024, 11/8/2023, 26/5/2023)
+    --  (SERIA2324, IL0001, 2023-2024, 19/8/2023, 26/5/2024)
+    --  (BUNDES2324, GL0001, 2023-2024, 18/8/2023, 18/5/2024)
 );
 
 CREATE TABLE club
@@ -37,19 +50,19 @@ CREATE TABLE club
     website VARCHAR(255) NOT NULL
 );
 
-CREATE TABLE participation  --updated on 8/5/2024
+CREATE TABLE participation  --updated on 14/5/2024
 (
-    parti_id VARCHAR(20) PRIMARY KEY,
-    league_id VARCHAR(6)  REFERENCES league(league_id),
-    club_id VARCHAR(3)  REFERENCES club(club_id),
-    state TEXT
+    season_id VARCHAR(10) REFERENCES league_held(season_id),
+    club_id VARCHAR(3) REFERENCES club(club_id),
+    state TEXT,
+    PRIMARY KEY (season_id, club_id)
 );
 
 CREATE TABLE match  
 (
     match_id VARCHAR(20) PRIMARY KEY,
-    league_id VARCHAR(6)  REFERENCES league(league_id),
-    season VARCHAR(10) REFERENCES participation(season),  --updated on 8/5/2024
+    league_id VARCHAR(6)  REFERENCES participation(league_id),
+    season VARCHAR(10) REFERENCES participation(season),  
     round VARCHAR(255),
     date_of_match DATE NOT NULL,
     stadium VARCHAR(255) NOT NULL,
@@ -59,7 +72,7 @@ CREATE TABLE match
 CREATE TABLE home 
 (
     match_id VARCHAR(20) REFERENCES match(match_id),
-    club_id VARCHAR(3) REFERENCES club(club_id),
+    club_id VARCHAR(3) REFERENCES participation(club_id),
     ball_possession INT NOT NULL,
     num_of_goals INT NOT NULL,
     total_shots INT NOT NULL,
@@ -172,7 +185,7 @@ CREATE TABLE Coaching
 -- CREATE VIEW --
 -- updated on 27/4/2024
 
-CREATE OR REPLACE VIEW premierleague AS 
+CREATE OR REPLACE VIEW premierleague2324 AS 
 (
     SELECT 
         club.club_id, club.club_name,
@@ -187,13 +200,13 @@ CREATE OR REPLACE VIEW premierleague AS
     INNER JOIN home ON match.match_id = home.match_id
     INNER JOIN away ON match.match_id = away.match_id
     INNER JOIN club ON club.club_id = home.club_id
-    WHERE match.league_id = 'EL0001' 
+    WHERE match.league_id = 'EL0001' AND match.season = ""
     GROUP BY club.club_id
     ORDER BY point DESC, goal_diff DESC, total_goals DESC
 );
 
 
-CREATE OR REPLACE VIEW premierleague_ranking AS
+CREATE OR REPLACE VIEW premierleague2324_ranking AS
 (
     SELECT club_id, RANK() OVER (ORDER BY point DESC, goal_diff DESC, total_goals DESC) AS ranking 
     FROM premierleague

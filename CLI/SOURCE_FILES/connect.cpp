@@ -17,7 +17,7 @@ void makelist(pqxx::connection& db, const string& query)
     txn.commit(); 
     ofstream file2("../SOURCE_FILES/data.txt");
     if (!file2.is_open())
-        cout << "ngu" << endl;
+        cout << "Error: Cannot open file" << endl;
     else {
     for (auto row : result)
     {
