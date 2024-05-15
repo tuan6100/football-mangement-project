@@ -1,3 +1,0 @@
-[submodule "CLI/deps/libpqxx"]
-	path = CLI/deps/libpqxx
-	url = https://github.com/jtv/libpqxx/blob/master/BUILDING-cmake.md

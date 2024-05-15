@@ -97,6 +97,23 @@ WHERE
 
 --8. In ra số trận thắng, hòa, thua và tính điểm số mà clb ... nhận được trong mùa giải ... ở giải đấu ...
 --   Biết rằng điểm số được tính theo công thức = số trận thắng * 3 + số trận hòa.
+    SELECT 
+        club.club_id, club.club_name,
+        SUM(CASE 
+            WHEN home.num_of_goals > away.num_of_goals THEN 3
+            WHEN home.num_of_goals = away.num_of_goals THEN 1
+            ELSE 0
+        END) AS point,
+        COUNT(CASE WHEN home.num_of_goals > away.num_of_goals THEN 1 END) as win,
+        COUNT(CASE WHEN home.num_of_goals = away.num_of_goals THEN 1 END) as draw,
+        COUNT(CASE WHEN home.num_of_goals < away.num_of_goals THEN 1 END) as lose
+    FROM match
+    INNER JOIN home ON match.match_id = home.match_id
+    INNER JOIN away ON match.match_id = away.match_id
+    INNER JOIN club ON club.club_id = home.club_id
+    INNER JOIN league ON match.league_id = league.league_id
+    WHERE league.league_name = '...' 
+    GROUP BY club.club_id;
 
 --9. In ra bảng xếp hạng của giải đấu ... trong năm ... 
 --   Biết rằng các đội bóng được xếp hạng theo thứ tự ưu tiên điểm số -> hiệu số bàn thắng-thua -> số bàn thắng
@@ -174,6 +191,47 @@ WHERE ranking = 1;
 
 --12. In ra thông tin cầu thủ xuất sắc nhất giải đấu ... trong mùa giải ...
 --   Biết rằng cầu thủ xuất sắc nhất là cầu thủ có tổng số bàn thắng + kiến tạo nhiều nhất va có số thẻ phạt ít nhất trong mùa giải đó.
+WITH player_stats AS 
+(
+    SELECT 
+        player_profile.player_id,
+        player_profile.player_name,
+        SUM(player_statistic.score) AS total_goals,
+        SUM(player_statistic.assist) AS total_assists,
+        SUM(player_statistic.yellow_cards) AS total_yellow_cards,
+        SUM(player_statistic.red_cards) AS total_red_cards,
+        (SUM(player_statistic.score) + SUM(player_statistic.assist)) AS total_contributions,
+        (SUM(player_statistic.yellow_cards) + SUM(player_statistic.red_cards)) AS total_cards
+    FROM player_profile
+    INNER JOIN player_statistic ON player_profile.player_id = player_statistic.player_id
+    INNER JOIN match ON player_statistic.match_id = match.match_id
+    INNER JOIN league_organ ON match.season_id = league_organ.season_id
+    INNER JOIN league ON league.league_id = league_organ.league_id
+    WHERE  league.league_name = '...' AND league_organ.season = '...'
+    GROUP BY player_profile.player_id
+),
+best_players AS 
+(
+    SELECT 
+        player_id, 
+        player_name, 
+        total_goals,
+        total_assists,
+        total_contributions,
+        total_cards,
+        RANK() OVER (ORDER BY total_contributions DESC, total_cards ASC) AS ranking
+    FROM player_stats
+)
+SELECT 
+    player_id, 
+    player_name, 
+    total_goals, 
+    total_assists, 
+    total_contributions, 
+    total_cards
+FROM best_players
+WHERE ranking = 1;
+
 
 --13. Liệt kê các clb trong giải đấu ... ở mùa giải 2023-2024 được tham gia vào giải đấu cup "UEFA Champion League" năm sau
 --    Biết rằng giải đấu có thể thức "Đấu vòng tròn" và clb nằm trong top 4 của bảng xếp hạng năm đó.
@@ -201,6 +259,40 @@ WHERE match.round = 'Chung kết'
     AND (home.num_of_goals > away.num_of_goals OR (home.num_of_goals = away.num_of_goals AND home.penalties > away.penalties))
 ;
 
+-- 16. In ra tên cầu thủ có nhiều bàn thắng nhất trong 5 giải đấu "Premier League", "Laliga", "Bundesliga", "Seria", "Ligue 1" trong mùa giải '...'
+WITH player_goals AS 
+(
+    SELECT 
+        player_profile.player_name,
+        league.league_name,
+        league_organ.season,
+        SUM(player_statistic.score) AS total_goals
+    FROM player_profile
+    INNER JOIN player_statistic ON player_profile.player_id = player_statistic.player_id
+    INNER JOIN match ON player_statistic.match_id = match.match_id
+    INNER JOIN league_organ ON match.season_id = league_organ.season_id
+    INNER JOIN league ON league.league_id = league_organ.league_id
+    WHERE league.league_name IN ('Premier League', 'LaLiga', 'Bundesliga', 'Serie A', 'Ligue 1') 
+        AND league_organ.season = '...'
+    GROUP BY player_profile.player_id, league.league_name, league_organ.season
+),
+top_scorer AS 
+(
+    SELECT 
+        player_id, 
+        player_name, 
+        total_goals,
+        RANK() OVER (ORDER BY total_goals DESC) AS ranking
+    FROM player_goals
+)
+SELECT 
+    player_id, 
+    player_name, 
+    total_goals
+FROM top_scorer
+WHERE ranking = 1;
+
+
 -- 17. In ra tong số bàn thắng và số kiến tạo của cac cầu thủ trong màu áo của clb ... trong thời gian thi đấu,
 SELECT player_profile.player_name, SUM(player_statistic.score) as total_scores, SUM(player_statistic.assist) as total_assissts
 FROM player_profile
@@ -210,6 +302,27 @@ INNER JOIN club on player_role.player_id = club.club_id
 WHERE club.club_name = '...' AND player_role.transfer_date <= NOW()
 GROUP BY player_profile.player_id
 ORDER BY total_goals DESC, total_assissts DES; 
+
+--18. In ra thông tin cầu thủ có điểm rating cao nhất trong vòng đấu ... của giải đấu .. ở mùa giải ..
+SELECT 
+    player_profile.player_name,
+    player_profile.player_id,
+    player_statistic.rating,
+    match.round,
+    league.league_name,
+    league_organ.season
+FROM player_statistic
+INNER JOIN player_profile ON player_statistic.player_id = player_profile.player_id
+INNER JOIN match ON player_statistic.match_id = match.match_id
+INNER JOIN league_organ ON match.season_id = league_organ.season_id
+INNER JOIN league ON league_organ.league_id = league.league_id
+WHERE 
+    AND league.league_name = '...' 
+    AND league_organ.season = '...'
+ORDER BY player_statistic.rating DESC
+LIMIT 1;
+
+
 
 -- 20. Tìm cầu thủ thi đấu nhiều trận nhất trong giải đấu ... ở mùa giải ...
 SELECT player_profile.player_name, COUNT(player_statistic.player_id) AS num_of_matches 
