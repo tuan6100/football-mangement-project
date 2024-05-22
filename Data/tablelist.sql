@@ -181,10 +181,10 @@ CREATE TABLE Coaching
 
 
 
--- CREATE VIEW --
+-- CREATE VIEWS --
 -- updated on 27/4/2024
 
-CREATE OR REPLACE VIEW premierleague AS 
+CREATE OR REPLACE VIEW premierleague2324 AS 
 (
     SELECT 
         club.club_id, club.club_name,
@@ -206,13 +206,7 @@ CREATE OR REPLACE VIEW premierleague AS
 );
 
 
-CREATE OR REPLACE VIEW premierleague_ranking AS
-(
-    SELECT club_id, RANK() OVER (ORDER BY point DESC, goal_diff DESC, total_goals DESC) AS ranking 
-    FROM premierleague
-);
-
-CREATE OR REPLACE VIEW laliga AS 
+CREATE OR REPLACE VIEW laliga2324 AS 
 (
     SELECT 
         club.club_id, club.club_name,
@@ -233,13 +227,7 @@ CREATE OR REPLACE VIEW laliga AS
     ORDER BY point DESC, goal_diff DESC, total_goals DESC
 );
 
-CREATE OR REPLACE VIEW laliga_ranking AS
-(
-    SELECT club_id, RANK() OVER (ORDER BY point DESC, goal_diff DESC, total_goals DESC) AS ranking 
-    FROM laliga
-);
-
-CREATE OR REPLACE VIEW seria AS 
+CREATE OR REPLACE VIEW seria2324 AS 
 (
     SELECT 
         club.club_id, club.club_name,
@@ -260,13 +248,7 @@ CREATE OR REPLACE VIEW seria AS
     ORDER BY point DESC, goal_diff DESC, total_goals DESC
 );
 
-CREATE OR REPLACE VIEW seria_ranking AS
-(
-    SELECT club_id, RANK() OVER (ORDER BY point DESC, goal_diff DESC, total_goals DESC) AS ranking 
-    FROM seria
-);
-
-CREATE OR REPLACE VIEW bundesliga AS 
+CREATE OR REPLACE VIEW bundesliga2324 AS 
 (
     SELECT 
         club.club_id, club.club_name,
@@ -287,8 +269,4 @@ CREATE OR REPLACE VIEW bundesliga AS
     ORDER BY point DESC, goal_diff DESC, total_goals DESC
 );
 
-CREATE OR REPLACE VIEW bundesliga_ranking AS
-(
-    SELECT club_id, RANK() OVER (ORDER BY point DESC, goal_diff DESC, total_goals DESC) AS ranking 
-    FROM bundesliga
-);
+
