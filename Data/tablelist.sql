@@ -6,7 +6,7 @@ create database footballdb;
 SET datestyle = 'dmy';
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
- --updated on 24/4/2024
+ -- last updated on 24/4/2024
 
 
 -- CREATE TABLES --
@@ -16,7 +16,7 @@ CREATE TABLE nation
     nation_id VARCHAR(6) PRIMARY KEY,
     nation_name VARCHAR(255) NOT NULL,
     continent VARCHAR(255) NOT NULL,
-    organization VARCHAR             --updated on 7/5/2024
+    organization VARCHAR             -- last updated on 7/5/2024
 );
 
 CREATE TABLE league         
@@ -28,7 +28,7 @@ CREATE TABLE league
     nation_id VARCHAR(6) REFERENCES nation(nation_id)
 );
 
-CREATE TABLE league_organ  --updated on 14/5/2024
+CREATE TABLE league_organ  -- last updated on 14/5/2024
 (
     season_id VARCHAR(10) PRIMARY KEY,
     league_id VARCHAR(6)  REFERENCES league(league_id) NOT NULL,
@@ -49,8 +49,9 @@ CREATE TABLE club
     away_kit VARCHAR(255) NOT NULL,
     website VARCHAR(255) NOT NULL
 );
+CREATE INDEX club_name_idx ON club USING hash (club_name);   -- last updated on 1/6/2024
 
-CREATE TABLE participation  --updated on 14/5/2024
+CREATE TABLE participation  -- last updated on 14/5/2024
 (
     season_id VARCHAR(10) REFERENCES season_id(season_id),
     club_id VARCHAR(3) REFERENCES club(club_id),
@@ -58,7 +59,7 @@ CREATE TABLE participation  --updated on 14/5/2024
     PRIMARY KEY (season_id, club_id)
 );
 
-CREATE TABLE match     --updated on 14/5/2024
+CREATE TABLE match     -- last updated on 14/5/2024
 (
     match_id VARCHAR(20) PRIMARY KEY,
     season_id VARCHAR(10) REFERENCES league_organ(season_id),  
@@ -82,6 +83,7 @@ CREATE TABLE home
     penalties INT,
     PRIMARY KEY (match_id, club_id)
 );
+-- create index on home (club_id), home (match_id)
 
 CREATE TABLE away 
 (
@@ -97,7 +99,27 @@ CREATE TABLE away
     penalties INT,
     PRIMARY KEY (match_id, club_id)
 );
+-- create index on home (club_id), home (match_id)
 
+-- last updated on 7/6/2024: create trigger to check that home table needs to be updated before away table
+CREATE OR REPLACE FUNCTION check_update_match()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF (SELECT COUNT(*) FROM home WHERE home.match_id = NEW.match_id) = 0
+    THEN
+        RAISE EXCEPTION 'Home table needs to be updated before away table';
+        USING HINT = 'Please insert data into home table first';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_check_update_match
+BEFORE INSERT ON away 
+FOR EACH ROW
+EXECUTE FUNCTION check_update_match();
+
+--last updated on 1/5/2024: create trigger to calculate ball possession
 CREATE OR REPLACE FUNCTION calculate_ball_possession()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -146,6 +168,35 @@ CREATE TABLE player_statistic
     PRIMARY KEY (player_id, match_id)
 );
 
+-- last updated on 14/5/2024: add trigger to update number of goals in each match
+
+CREATE OR REPLACE FUNCTION calculate_goal()
+RETURNS TRIGGER AS $$
+BEGIN
+        IF (SELECT home.club_id FROM home
+            INNER JOIN player_statistic ON player_statistic.match_id = home.match_id
+            WHERE home.player_id = NEW.player_id) IS NOT NULL
+        THEN
+            UPDATE home
+            SET num_of_goals = num_of_goals + NEW.score
+            WHERE match_id = NEW.match_id;
+        ELSE
+            UPDATE away
+            SET num_of_goals = num_of_goals + NEW.score
+            WHERE match_id = NEW.match_id;
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_goals_trigger
+AFTER INSERT OR UPDATE ON player_statistic
+FOR EACH ROW
+EXECUTE FUNCTION calculate_goal();
+
+
 CREATE TABLE player_honours
 (
     player_id VARCHAR(20) REFERENCES player_profile(player_id),
@@ -182,91 +233,208 @@ CREATE TABLE Coaching
 
 
 -- CREATE VIEWS --
--- updated on 27/4/2024
+-- last updated on 27/4/2024 
 
-CREATE OR REPLACE VIEW premierleague2324 AS 
-(
+-- VIEW FOR SEEN MATCH RESULT
+
+-- last updated on 1/6/2024: create view for seen match result
+CREATE OR REPLACE VIEW match_result AS
+SELECT 
+    match.match_id,
+    home.club_id AS home_team,  
+    home.num_of_goals AS home_score,
+    away.club_id AS away_team,
+    away.num_of_goals AS away_score
+FROM match
+INNER JOIN home ON match.match_id = home.match_id
+INNER JOIN away ON match.match_id = away.match_id;
+
+
+-- last updated on 1/6/2024: create trigger for view match_result
+CREATE OR REPLACE FUNCTION update_match_result()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        INSERT INTO match_result
+        VALUES (NEW.match_id,  home.club_id, home.num_of_goals, NEW.club_id, NEW.num_of_goals)
+        WHERE match_result.match_id = NEW.match_id AND home.match_id = NEW.match_id;
+    ELSIF TG_OP = 'UPDATE' THEN
+        UPDATE match_result
+        SET home_score = home.num_of_goals, away_score = NEW.num_of_goals
+        WHERE match_result.match_id = NEW.match_id AND home.match_id = NEW.match_id;
+    ELSIF TG_OP = 'DELETE' THEN
+        DELETE FROM match_result
+        WHERE match_result.match_id = NEW.match_id;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_update_match_result
+AFTER INSERT OR UPDATE OR DELETE ON away
+FOR EACH ROW
+EXECUTE FUNCTION update_match_result();
+
+
+
+-- VIEW FOR SEEN LEAGUE TABLE
+
+-- last updated on 2/6/2024: create function for statistic some datad
+CREATE OR REPLACE FUNCTION calculate_point(var_club_id VARCHAR(3), var_league_id VARCHAR(6), var_season VARCHAR(10))
+RETURNS INT AS $$
+DECLARE var_point INT;
+BEGIN
     SELECT 
-        club.club_id, club.club_name,
         SUM(CASE 
             WHEN home.num_of_goals > away.num_of_goals THEN 3
             WHEN home.num_of_goals = away.num_of_goals THEN 1
             ELSE 0
-        END) AS point,
-        (SUM(home.num_of_goals) - SUM(away.num_of_goals)) AS goal_diff,
-        SUM(home.num_of_goals) AS total_goals
+        END)
+    INTO var_point
+    FROM match_result
+    INNER JOIN club ON club.club_id = home.club_id
+    INNER JOIN league_organ ON match.season_id = league_organ.season_id
+    WHERE league_organ.league_id = var_league_id AND league_organ.season = var_season AND club.club_id = var_club_id;
+    RETURN var_point;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION calculate_goal_diff(var_club_id VARCHAR(3), var_league_id VARCHAR(6), var_season VARCHAR(10))
+RETURNS INT AS $$
+DECLARE var_goal_diff INT;
+BEGIN
+    SELECT 
+        (SUM(home.num_of_goals) - SUM(away.num_of_goals))
+    INTO var_goal_diff
     FROM match
     INNER JOIN home ON match.match_id = home.match_id
     INNER JOIN away ON match.match_id = away.match_id
     INNER JOIN club ON club.club_id = home.club_id
     INNER JOIN league_organ ON match.season_id = league_organ.season_id
-    WHERE league_organ.league_id = 'EL0001' AND league_organ.season = '2023-2024'
-    GROUP BY club.club_id
-    ORDER BY point DESC, goal_diff DESC, total_goals DESC
-);
+    WHERE league_organ.league_id = var_league_id AND league_organ.season = var_season AND club.club_id = var_club_id;
+    RETURN var_goal_diff;
+END;
+$$ LANGUAGE plpgsql;
 
-
-CREATE OR REPLACE VIEW laliga2324 AS 
-(
+CREATE OR REPLACE FUNCTION calculate_total_goals(var_club_id VARCHAR(3), var_league_id VARCHAR(6), var_season VARCHAR(10))
+RETURNS INT AS $$
+DECLARE var_total_goals INT;
+BEGIN
     SELECT 
-        club.club_id, club.club_name,
-        SUM(CASE 
-            WHEN home.num_of_goals > away.num_of_goals THEN 3
-            WHEN home.num_of_goals = away.num_of_goals THEN 1
-            ELSE 0
-        END) AS point,
-        (SUM(home.num_of_goals) - SUM(away.num_of_goals)) AS goal_diff,
-        SUM(home.num_of_goals) AS total_goals
+        SUM(home.num_of_goals)
+    INTO var_total_goals
     FROM match
     INNER JOIN home ON match.match_id = home.match_id
     INNER JOIN away ON match.match_id = away.match_id
     INNER JOIN club ON club.club_id = home.club_id
     INNER JOIN league_organ ON match.season_id = league_organ.season_id
-    WHERE league_organ.league_id = 'SL0001' AND league_organ.season = '2023-2024'
-    GROUP BY club.club_id
-    ORDER BY point DESC, goal_diff DESC, total_goals DESC
-);
+    WHERE league_organ.league_id = var_league_id AND league_organ.season = var_season AND club.club_id = var_club_id;
+    RETURN var_total_goals;
+END;
+$$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE VIEW seria2324 AS 
+-- last updated on 2/6/2024: create view for seen league table
+CREATE OR REPLACE VIEW table_stats AS 
 (
     SELECT 
-        club.club_id, club.club_name,
-        SUM(CASE 
-            WHEN home.num_of_goals > away.num_of_goals THEN 3
-            WHEN home.num_of_goals = away.num_of_goals THEN 1
-            ELSE 0
-        END) AS point,
-        (SUM(home.num_of_goals) - SUM(away.num_of_goals)) AS goal_diff,
-        SUM(home.num_of_goals) AS total_goals
-    FROM match
-    INNER JOIN home ON match.match_id = home.match_id
-    INNER JOIN away ON match.match_id = away.match_id
-    INNER JOIN club ON club.club_id = home.club_id
-    INNER JOIN league_organ ON match.season_id = league_organ.season_id
-    WHERE league_organ.league_id = 'IL0001' AND league_organ.season = '2023-2024'
-    GROUP BY club.club_id
-    ORDER BY point DESC, goal_diff DESC, total_goals DESC
+        league_organ.league_id,
+        club.club_id,
+        calculate_point(club.club_id, league_organ.league_id, league_organ.season) AS point,  
+        calculate_goal_diff(club.club_id, league_organ.league_id, league_organ.season) AS goal_diff,
+        calculate_total_goals(club.club_id, league_organ.league_id, league_organ.season) AS total_goals 
+    FROM league_organ
+    INNER JOIN participation ON league_organ.season_id = league_season.club_id
+    INNER JOIN league_organ ON participation.season_id = league_organ.season_id        
 );
 
-CREATE OR REPLACE VIEW bundesliga2324 AS 
+-- CREATE TRIGGER FOR VIEW
+CREA
+
+
+
+-- CREATE RABLE TO MANAGE PERMISSION FOR ADMINS AND GUESTS
+-- last updated on 8/6/2024
+CREATE ROLE admin;
+-- all permissions
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO admin;
+
+CREATE ROLE guest;
+-- read-only permissions
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO guest;
+
+CREATE TABLE admins 
 (
-    SELECT 
-        club.club_id, club.club_name,
-        SUM(CASE 
-            WHEN home.num_of_goals > away.num_of_goals THEN 3
-            WHEN home.num_of_goals = away.num_of_goals THEN 1
-            ELSE 0
-        END) AS point,
-        (SUM(home.num_of_goals) - SUM(away.num_of_goals)) AS goal_diff,
-        SUM(home.num_of_goals) AS total_goals
-    FROM match
-    INNER JOIN home ON match.match_id = home.match_id
-    INNER JOIN away ON match.match_id = away.match_id
-    INNER JOIN club ON club.club_id = home.club_id
-    INNER JOIN league_organ ON match.season_id = league_organ.season_id
-    WHERE league_organ.league_id = 'GL0001' AND league_organ.season = '2023-2024'
-    GROUP BY club.club_id
-    ORDER BY point DESC, goal_diff DESC, total_goals DESC
+    admin_id SERIAL PRIMARY KEY,
+    fullnames VARCHAR(50) NOT NULL,
+    username VARCHAR(50) NOT NULL,
+    phone_number VARCHAR(15) NOT NULL,
+    email VARCHAR(50) NOT NULL,
+    password VARCHAR(255) NOT NULL
 );
+CREATE INDEX admins_idx ON admins (username);
 
+CREATE TABLE guests 
+(
+    guest_id SERIAL PRIMARY KEY,
+    fullnames VARCHAR(50),
+    username VARCHAR(50) NOT NULL,
+    email VARCHAR(50) NOT NULL,
+    password VARCHAR(255) NOT NULL
+);
+CREATE INDEX guests_idx ON guests (username);
 
+-- trigger to grant permissions 
+CREATE OR REPLACE FUNCTION grant_permissions()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_TABLE_NAME = 'admins' THEN
+        GRANT admin TO NEW.username;
+    ELSIF TG_TABLE_NAME = 'guests' THEN
+        GRANT guest TO NEW.username;
+    END IF;
+END;
+
+CREATE OR REPLACE FUNCTION grant_permissions()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_TABLE_NAME = 'admins' THEN
+        EXECUTE 'GRANT admin TO "' || NEW.username || '";';
+    ELSIF TG_TABLE_NAME = 'guests' THEN
+        EXECUTE 'GRANT guest TO "' || NEW.username || '";';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- trigger to hash password
+CREATE OR REPLACE FUNCTION hash_password()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.password = crypt(NEW.password, gen_salt('sha256'));
+    RETURN NEW;
+END;
+
+CREATE TRIGGER trigger_hash_password_for_admins
+BEFORE INSERT OR UPDATE ON admins
+FOR EACH ROW
+EXECUTE FUNCTION hash_password();
+
+CREATE TRIGGER trigger_hash_password_for_guests
+BEFORE INSERT OR UPDATE ON guests
+FOR EACH ROW
+EXECUTE FUNCTION hash_password();
+
+--trigger for checking if username already exists
+CREATE OR REPLACE FUNCTION check_username()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF (SELECT COUNT(*) FROM admins WHERE admins.username = NEW.username) > 0
+    THEN
+        RAISE EXCEPTION 'Username already exists';
+    END IF;
+    RETURN NEW;
+END;
+
+CREATE TRIGGER trigger_check_username_for_admins
+BEFORE INSERT OR UPDATE ON admins
+FOR EACH ROW
+EXECUTE FUNCTION check_username();
