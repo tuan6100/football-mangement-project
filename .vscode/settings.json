@@ -4,5 +4,6 @@
         "iostream": "cpp"
     },
     "cmake.sourceDirectory": "/home/tuan/Documents/Code/SQL/Project/football/CLI",
-    "git.ignoreLimitWarning": true
+    "git.ignoreLimitWarning": true,
+    "cmake.configureOnOpen": false
 }

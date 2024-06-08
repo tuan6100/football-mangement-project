@@ -1,0 +1,88 @@
+Creating a table to manage permissions for administrators and guests in PostgreSQL involves several steps. You will need to define roles, assign permissions, and create a table to store user roles. Here's a detailed example:
+
+    Create the roles:
+    First, create the roles for administrators and guests.
+
+sql
+
+-- Create roles for admin and guest
+CREATE ROLE admin;
+CREATE ROLE guest;
+
+    Create a user_roles table:
+    This table will store the relationship between users and their roles.
+
+sql
+
+CREATE TABLE user_roles (
+    user_id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'guest'))
+);
+
+    Assign roles to users:
+    You can insert data into the user_roles table to assign roles to users.
+
+sql
+
+-- Insert example users
+INSERT INTO user_roles (username, role) VALUES ('admin_user', 'admin');
+INSERT INTO user_roles (username, role) VALUES ('guest_user', 'guest');
+
+    Create permissions for the roles:
+    Use the GRANT command to assign permissions to each role.
+
+sql
+
+-- Grant permissions to admin role
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO admin;
+
+-- Grant read-only permissions to guest role
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO guest;
+
+    Create users and assign them to roles:
+    Create database users and assign them to the respective roles.
+
+sql
+
+-- Create a database user for admin
+CREATE USER admin_user WITH PASSWORD 'admin_password';
+GRANT admin TO admin_user;
+
+-- Create a database user for guest
+CREATE USER guest_user WITH PASSWORD 'guest_password';
+GRANT guest TO guest_user;
+
+    Optional: Automate role assignment:
+    Create a function or stored procedure to automate role assignment based on the user_roles table.
+
+sql
+
+-- Function to assign role to a user based on user_roles table
+CREATE OR REPLACE FUNCTION assign_role_to_user(username VARCHAR) RETURNS VOID AS $$
+DECLARE
+    user_role VARCHAR;
+BEGIN
+    SELECT role INTO user_role FROM user_roles WHERE username = assign_role_to_user.username;
+    IF user_role = 'admin' THEN
+        GRANT admin TO username;
+    ELSIF user_role = 'guest' THEN
+        GRANT guest TO username;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+    Enforce role assignment on user creation:
+    Use the function to assign roles automatically when a new user is created.
+
+sql
+
+-- Example of creating a new user and assigning role
+DO $$
+BEGIN
+    CREATE USER new_admin_user WITH PASSWORD 'new_admin_password';
+    CALL assign_role_to_user('new_admin_user');
+END;
+$$;
+
+This setup ensures that you have a clear separation of roles and permissions for administrators and guests in your PostgreSQL database. The user_roles table manages user-role relationships, while the GRANT commands enforce the appropriate permissions for each role.

@@ -55,7 +55,7 @@ SELECT
 FROM league
 INNER JOIN participation ON league.league_id = participation.league_id
 INNER JOIN match ON participation.match_id = match.match_id
-WHERE participation.state = "Vo dich" AND participation.season = ""
+WHERE participation.state = "Vo dich" AND participation.season = "";
 
 --6. Liệt kê tỉ số của các trận diễn ra trong vòng đấu ... của giải đấu ... trong mùa giải ...
 SELECT 
@@ -98,7 +98,7 @@ WHERE
 --8. In ra số trận thắng, hòa, thua và tính điểm số mà clb ... nhận được trong mùa giải ... ở giải đấu ...
 --   Biết rằng điểm số được tính theo công thức = số trận thắng * 3 + số trận hòa.
     SELECT 
-        club.club_id, club.club_name,
+        club.club_name,
         SUM(CASE 
             WHEN home.num_of_goals > away.num_of_goals THEN 3
             WHEN home.num_of_goals = away.num_of_goals THEN 1
@@ -111,21 +111,21 @@ WHERE
     INNER JOIN home ON match.match_id = home.match_id
     INNER JOIN away ON match.match_id = away.match_id
     INNER JOIN club ON club.club_id = home.club_id
-    INNER JOIN league ON match.league_id = league.league_id
-    WHERE league.league_name = '...' 
+    INNER JOIN league_organ ON match.season_id = league_organ.season_id
+    WHERE league_organ.season_id = '...' 
     GROUP BY club.club_id;
 
---9. In ra bảng xếp hạng của giải đấu ... trong năm ... 
+--9. In ra bảng xếp hạng của giải đấu ... trong mùa giải ... 
 --   Biết rằng các đội bóng được xếp hạng theo thứ tự ưu tiên điểm số -> hiệu số bàn thắng-thua -> số bàn thắng
 SELECT 
-    club_id, 
+    club_name, 
     point, 
     goal_diff, 
     total_goals,
     RANK() OVER (ORDER BY point DESC, goal_diff DESC, total_goals DESC) AS ranking 
 FROM 
     (SELECT 
-        club.club_id, 
+        club.club_name, 
         SUM(CASE 
             WHEN home.num_of_goals > away.num_of_goals THEN 3
             WHEN home.num_of_goals = away.num_of_goals THEN 1
@@ -137,7 +137,8 @@ FROM
     INNER JOIN home ON match.match_id = home.match_id
     INNER JOIN away ON match.match_id = away.match_id
     INNER JOIN club ON club.club_id = home.club_id
-    WHERE match.league_id = '...' 
+    INNER JOIN league_organ ON match.season_id = league_organ.season_id
+    WHERE league_organ.season_id = '...'
     GROUP BY club.club_id
 ) AS subquery
 ORDER BY point DESC, goal_diff DESC, total_goals DESC;
@@ -168,8 +169,7 @@ WITH player_goals AS
     INNER JOIN player_statistic ON player_profile.player_id = player_statistic.player_id
     INNER JOIN match ON player_statistic.match_id = match.match_id
     INNER JOIN league_organ ON match.season_id = league_organ.season_id
-    INNER JOIN league ON league.league_id = league_organ.league_id
-    WHERE league.league_name = '...' AND league_organ.season = '...'
+    WHERE league_organ.season_id = '...'
     GROUP BY player_profile.player_id
 ),
 top_scorers AS 
@@ -356,3 +356,16 @@ AND participation.season = ... AND league.league_name = ...
 GROUP BY player_profile.player_id;
 
 --25. Thứ hạng trung bình của clb ... trong giải đấu ... từ mùa giải ... đến nay.
+SELECT 
+    club.club_name,
+    AVG(league_organ.ranking) AS average_ranking
+FROM club
+INNER JOIN league_organ ON club.club_id = league_organ.club_id
+INNER JOIN league ON league_organ.league_id = league.league_id
+WHERE league.league_name = '...'
+    AND league_organ.season >= '...'
+GROUP BY club.club_name;
+
+--26. Liet ke cac tran dau co tong so ban thang ghi duoc nhieu nhat
+
+--27. Liet ke cac tran dau co ti so thang thua dam nhat

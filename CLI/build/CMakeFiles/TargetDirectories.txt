@@ -1,0 +1,3 @@
+/home/tuan/Documents/Code/SQL/Project/football/CLI/build/CMakeFiles/football.dir
+/home/tuan/Documents/Code/SQL/Project/football/CLI/build/CMakeFiles/edit_cache.dir
+/home/tuan/Documents/Code/SQL/Project/football/CLI/build/CMakeFiles/rebuild_cache.dir

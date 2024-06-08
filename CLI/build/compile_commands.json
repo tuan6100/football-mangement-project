@@ -1,0 +1,56 @@
+[
+{
+  "directory": "/home/tuan/Documents/Code/SQL/Project/football/CLI/build",
+  "command": "/usr/bin/g++ -I/home/tuan/Documents/Code/SQL/Project/football/CLI/HEADER_FILES -g -std=gnu++20 -o CMakeFiles/football.dir/SOURCE_FILES/connect.cpp.o -c /home/tuan/Documents/Code/SQL/Project/football/CLI/SOURCE_FILES/connect.cpp",
+  "file": "/home/tuan/Documents/Code/SQL/Project/football/CLI/SOURCE_FILES/connect.cpp",
+  "output": "CMakeFiles/football.dir/SOURCE_FILES/connect.cpp.o"
+},
+{
+  "directory": "/home/tuan/Documents/Code/SQL/Project/football/CLI/build",
+  "command": "/usr/bin/g++ -I/home/tuan/Documents/Code/SQL/Project/football/CLI/HEADER_FILES -g -std=gnu++20 -o CMakeFiles/football.dir/SOURCE_FILES/main.cpp.o -c /home/tuan/Documents/Code/SQL/Project/football/CLI/SOURCE_FILES/main.cpp",
+  "file": "/home/tuan/Documents/Code/SQL/Project/football/CLI/SOURCE_FILES/main.cpp",
+  "output": "CMakeFiles/football.dir/SOURCE_FILES/main.cpp.o"
+},
+{
+  "directory": "/home/tuan/Documents/Code/SQL/Project/football/CLI/build",
+  "command": "/usr/bin/g++ -I/home/tuan/Documents/Code/SQL/Project/football/CLI/HEADER_FILES -g -std=gnu++20 -o CMakeFiles/football.dir/SOURCE_FILES/query_1st.cpp.o -c /home/tuan/Documents/Code/SQL/Project/football/CLI/SOURCE_FILES/query_1st.cpp",
+  "file": "/home/tuan/Documents/Code/SQL/Project/football/CLI/SOURCE_FILES/query_1st.cpp",
+  "output": "CMakeFiles/football.dir/SOURCE_FILES/query_1st.cpp.o"
+},
+{
+  "directory": "/home/tuan/Documents/Code/SQL/Project/football/CLI/build",
+  "command": "/usr/bin/g++ -I/home/tuan/Documents/Code/SQL/Project/football/CLI/HEADER_FILES -g -std=gnu++20 -o CMakeFiles/football.dir/SOURCE_FILES/query_2nd.cpp.o -c /home/tuan/Documents/Code/SQL/Project/football/CLI/SOURCE_FILES/query_2nd.cpp",
+  "file": "/home/tuan/Documents/Code/SQL/Project/football/CLI/SOURCE_FILES/query_2nd.cpp",
+  "output": "CMakeFiles/football.dir/SOURCE_FILES/query_2nd.cpp.o"
+},
+{
+  "directory": "/home/tuan/Documents/Code/SQL/Project/football/CLI/build",
+  "command": "/usr/bin/g++ -I/home/tuan/Documents/Code/SQL/Project/football/CLI/HEADER_FILES -g -std=gnu++20 -o CMakeFiles/football.dir/SOURCE_FILES/query_3rd.cpp.o -c /home/tuan/Documents/Code/SQL/Project/football/CLI/SOURCE_FILES/query_3rd.cpp",
+  "file": "/home/tuan/Documents/Code/SQL/Project/football/CLI/SOURCE_FILES/query_3rd.cpp",
+  "output": "CMakeFiles/football.dir/SOURCE_FILES/query_3rd.cpp.o"
+},
+{
+  "directory": "/home/tuan/Documents/Code/SQL/Project/football/CLI/build",
+  "command": "/usr/bin/g++ -I/home/tuan/Documents/Code/SQL/Project/football/CLI/HEADER_FILES -g -std=gnu++20 -o CMakeFiles/football.dir/SOURCE_FILES/query_4th.cpp.o -c /home/tuan/Documents/Code/SQL/Project/football/CLI/SOURCE_FILES/query_4th.cpp",
+  "file": "/home/tuan/Documents/Code/SQL/Project/football/CLI/SOURCE_FILES/query_4th.cpp",
+  "output": "CMakeFiles/football.dir/SOURCE_FILES/query_4th.cpp.o"
+},
+{
+  "directory": "/home/tuan/Documents/Code/SQL/Project/football/CLI/build",
+  "command": "/usr/bin/g++ -I/home/tuan/Documents/Code/SQL/Project/football/CLI/HEADER_FILES -g -std=gnu++20 -o CMakeFiles/football.dir/SOURCE_FILES/query_5th.cpp.o -c /home/tuan/Documents/Code/SQL/Project/football/CLI/SOURCE_FILES/query_5th.cpp",
+  "file": "/home/tuan/Documents/Code/SQL/Project/football/CLI/SOURCE_FILES/query_5th.cpp",
+  "output": "CMakeFiles/football.dir/SOURCE_FILES/query_5th.cpp.o"
+},
+{
+  "directory": "/home/tuan/Documents/Code/SQL/Project/football/CLI/build",
+  "command": "/usr/bin/g++ -I/home/tuan/Documents/Code/SQL/Project/football/CLI/HEADER_FILES -g -std=gnu++20 -o CMakeFiles/football.dir/SOURCE_FILES/query_7th.cpp.o -c /home/tuan/Documents/Code/SQL/Project/football/CLI/SOURCE_FILES/query_7th.cpp",
+  "file": "/home/tuan/Documents/Code/SQL/Project/football/CLI/SOURCE_FILES/query_7th.cpp",
+  "output": "CMakeFiles/football.dir/SOURCE_FILES/query_7th.cpp.o"
+},
+{
+  "directory": "/home/tuan/Documents/Code/SQL/Project/football/CLI/build",
+  "command": "/usr/bin/g++ -I/home/tuan/Documents/Code/SQL/Project/football/CLI/HEADER_FILES -g -std=gnu++20 -o CMakeFiles/football.dir/SOURCE_FILES/query_8th.cpp.o -c /home/tuan/Documents/Code/SQL/Project/football/CLI/SOURCE_FILES/query_8th.cpp",
+  "file": "/home/tuan/Documents/Code/SQL/Project/football/CLI/SOURCE_FILES/query_8th.cpp",
+  "output": "CMakeFiles/football.dir/SOURCE_FILES/query_8th.cpp.o"
+}
+]
