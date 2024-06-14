@@ -90,7 +90,7 @@ CREATE TABLE away
     match_id VARCHAR(20) REFERENCES match(match_id),
     club_id VARCHAR(3) REFERENCES club(club_id),
     ball_possession INT NOT NULL,
-    num_of_goals INT NOT NULL,
+    num_of_goals INT,
     total_shots INT NOT NULL,
     shots_on_target INT NOT NULL,
     corner_kicks INT NOT NULL,
@@ -101,25 +101,32 @@ CREATE TABLE away
 );
 -- create index on home (club_id), home (match_id)
 
--- last updated on 7/6/2024: create trigger to check that home table needs to be updated before away table
-CREATE OR REPLACE FUNCTION check_update_match()
+-- last updated on 7/6/2024: CREATE OR REPLACE TRIGGER to check that home table needs to be updated before away table
+CREATE OR REPLACE FUNCTION check_match()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF (SELECT COUNT(*) FROM home WHERE home.match_id = NEW.match_id) = 0
-    THEN
-        RAISE EXCEPTION 'Home table needs to be updated before away table';
-        USING HINT = 'Please insert data into home table first';
+    IF TG_OP = 'INSERT' THEN
+        IF (SELECT COUNT(*) FROM home WHERE home.match_id = NEW.match_id) = 0 THEN
+            RAISE EXCEPTION 'Home table needs to be inserted first'
+            USING HINT = 'Please insert data into home table first';
+        END IF;
+    ELSIF TG_OP = 'DELETE' THEN
+        IF (SELECT COUNT(*) FROM home WHERE home.match_id = OLD.match_id) = 1 THEN
+            RAISE EXCEPTION 'Home table needs to be deleted first'
+            USING HINT = 'Please delete data from home table first';
+        END IF;
     END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trigger_check_update_match
-BEFORE INSERT ON away 
-FOR EACH ROW
-EXECUTE FUNCTION check_update_match();
 
---last updated on 1/5/2024: create trigger to calculate ball possession
+CREATE OR REPLACE TRIGGER trigger_check_match
+BEFORE INSERT OR DELETE ON away 
+FOR EACH ROW
+EXECUTE FUNCTION check_match();
+
+--last updated on 1/5/2024: CREATE OR REPLACE TRIGGER to calculate ball possession
 CREATE OR REPLACE FUNCTION calculate_ball_possession()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -128,7 +135,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trigger_calculate_ball_possession
+CREATE OR REPLACE TRIGGER trigger_calculate_ball_possession
 BEFORE INSERT ON away
 FOR EACH ROW
 EXECUTE FUNCTION calculate_ball_possession();
@@ -146,14 +153,13 @@ CREATE TABLE player_profile
 
 CREATE TABLE player_role
 (
-    transfer_id VARCHAR(6) PRIMARY KEY,
+    season_id VARCHAR(10) REFERENCES league_organ(season_id),
     player_id VARCHAR(6) REFERENCES player_profile(player_id),
     club_id VARCHAR(3) REFERENCES club(club_id),
     shirt_number INT NOT NULL,
     position VARCHAR(3) NOT NULL,
-    transfer_date DATE,
-    contract_duration INT,
-    salary INT
+    contract_duration DATE,
+    PRIMARY KEY (player_id, club_id, season_id)
 );
 
 CREATE TABLE player_statistic
@@ -174,15 +180,15 @@ CREATE OR REPLACE FUNCTION calculate_goal()
 RETURNS TRIGGER AS $$
 BEGIN
         IF (SELECT home.club_id FROM home
-            INNER JOIN player_statistic ON player_statistic.match_id = home.match_id
-            WHERE home.player_id = NEW.player_id) IS NOT NULL
+            INNER JOIN player_statistic ON player_statistic.match_id = home.match_id  AND player_statistic.club_id = home.club_id
+            WHERE home.club_id = NEW.club_id) IS NOT NULL
         THEN
             UPDATE home
-            SET num_of_goals = num_of_goals + NEW.score
-            WHERE match_id = NEW.match_id;
+            SET num_of_goals = SUM(player_statistic.score)
+            WHERE home.match_id = NEW.match_id;
         ELSE
             UPDATE away
-            SET num_of_goals = num_of_goals + NEW.score
+            SET num_of_goals = SUM(player_statistic.score)
             WHERE match_id = NEW.match_id;
         END IF;
     END IF;
@@ -191,7 +197,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER update_goals_trigger
+CREATE OR REPLACE TRIGGER update_goals_trigger
 AFTER INSERT OR UPDATE ON player_statistic
 FOR EACH ROW
 EXECUTE FUNCTION calculate_goal();
@@ -237,8 +243,8 @@ CREATE TABLE Coaching
 
 -- VIEW FOR SEEN MATCH RESULT
 
--- last updated on 1/6/2024: create view for seen match result
-CREATE OR REPLACE VIEW match_result AS
+-- last updated on 11/6/2024: create view to seen match result
+CREATE MATERIALIZED VIEW match_result AS
 SELECT 
     match.match_id,
     home.club_id AS home_team,  
@@ -249,30 +255,21 @@ FROM match
 INNER JOIN home ON match.match_id = home.match_id
 INNER JOIN away ON match.match_id = away.match_id;
 
+CREATE INDEX match_result_idx ON match_result(match_id, home_team, away_team);
 
--- last updated on 1/6/2024: create trigger for view match_result
-CREATE OR REPLACE FUNCTION update_match_result()
+-- last updated on 11/6/2024: create trigger to refresh match_result
+CREATE OR REPLACE FUNCTION refresh_match_result()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF TG_OP = 'INSERT' THEN
-        INSERT INTO match_result
-        VALUES (NEW.match_id,  home.club_id, home.num_of_goals, NEW.club_id, NEW.num_of_goals)
-        WHERE match_result.match_id = NEW.match_id AND home.match_id = NEW.match_id;
-    ELSIF TG_OP = 'UPDATE' THEN
-        UPDATE match_result
-        SET home_score = home.num_of_goals, away_score = NEW.num_of_goals
-        WHERE match_result.match_id = NEW.match_id AND home.match_id = NEW.match_id;
-    ELSIF TG_OP = 'DELETE' THEN
-        DELETE FROM match_result
-        WHERE match_result.match_id = NEW.match_id;
-    END IF;
+    REFRESH MATERIALIZED VIEW match_result;
+    RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trigger_update_match_result
+CREATE OR REPLACE TRIGGER trigger_refresh_match_result
 AFTER INSERT OR UPDATE OR DELETE ON away
 FOR EACH ROW
-EXECUTE FUNCTION update_match_result();
+EXECUTE FUNCTION refresh_match_result();
 
 
 
@@ -332,8 +329,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- last updated on 2/6/2024: create view for seen league table
-CREATE OR REPLACE VIEW table_stats AS 
+-- last updated on 11/6/2024: create view for seen league table
+CREATE MATERIALIZED VIEW table_stats AS 
 (
     SELECT 
         league_organ.league_id,
@@ -342,19 +339,17 @@ CREATE OR REPLACE VIEW table_stats AS
         calculate_goal_diff(club.club_id, league_organ.league_id, league_organ.season) AS goal_diff,
         calculate_total_goals(club.club_id, league_organ.league_id, league_organ.season) AS total_goals 
     FROM league_organ
-    INNER JOIN participation ON league_organ.season_id = league_season.club_id
-    INNER JOIN league_organ ON participation.season_id = league_organ.season_id        
+    INNER JOIN participation ON league_organ.season_id = participation.season_id
+    INNER JOIN club ON participation.club_id = club.club_id  
+    ORDER BY point DESC, goal_diff DESC, total_goals DESC     
 );
-
--- CREATE TRIGGER FOR VIEW
-CREA
 
 
 
 -- CREATE RABLE TO MANAGE PERMISSION FOR ADMINS AND GUESTS
 -- last updated on 8/6/2024
 CREATE ROLE admin;
--- all permissions
+-- all permissions2
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO admin;
 
 CREATE ROLE guest;
@@ -413,12 +408,12 @@ BEGIN
     RETURN NEW;
 END;
 
-CREATE TRIGGER trigger_hash_password_for_admins
+CREATE OR REPLACE TRIGGER trigger_hash_password_for_admins
 BEFORE INSERT OR UPDATE ON admins
 FOR EACH ROW
 EXECUTE FUNCTION hash_password();
 
-CREATE TRIGGER trigger_hash_password_for_guests
+CREATE OR REPLACE TRIGGER trigger_hash_password_for_guests
 BEFORE INSERT OR UPDATE ON guests
 FOR EACH ROW
 EXECUTE FUNCTION hash_password();
@@ -434,7 +429,8 @@ BEGIN
     RETURN NEW;
 END;
 
-CREATE TRIGGER trigger_check_username_for_admins
+CREATE OR REPLACE TRIGGER trigger_check_username_for_admins
 BEFORE INSERT OR UPDATE ON admins
 FOR EACH ROW
 EXECUTE FUNCTION check_username();
+
