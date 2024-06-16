@@ -51,17 +51,10 @@ CREATE TABLE club
 );
 CREATE INDEX club_name_idx ON club USING hash (club_name);   -- last updated on 1/6/2024
 
-CREATE TABLE participation  -- last updated on 14/5/2024
-(
-    season_id VARCHAR(10) REFERENCES season_id(season_id),
-    club_id VARCHAR(3) REFERENCES club(club_id),
-    state TEXT,
-    PRIMARY KEY (season_id, club_id)
-);
 
 CREATE TABLE match     -- last updated on 14/5/2024
 (
-    match_id VARCHAR(20) PRIMARY KEY,
+    match_id INT SERIAL PRIMARY KEY,
     season_id VARCHAR(10) REFERENCES league_organ(season_id),  
     round VARCHAR(255),
     date_of_match DATE NOT NULL,
@@ -71,8 +64,8 @@ CREATE TABLE match     -- last updated on 14/5/2024
 
 CREATE TABLE home 
 (
-    match_id VARCHAR(20) REFERENCES match(match_id),
-    club_id VARCHAR(3) REFERENCES participation(club_id),
+    match_id INT  REFERENCES match(match_id) ON DELETE CASCADE,
+    club_id VARCHAR(3) REFERENCES club(club_id) ,
     ball_possession INT NOT NULL,
     num_of_goals INT NOT NULL,
     total_shots INT NOT NULL,
@@ -81,14 +74,14 @@ CREATE TABLE home
     offsides INT NOT NULL,
     fouls INT NOT NULL,
     penalties INT,
-    PRIMARY KEY (match_id, club_id)
+    PRIMARY KEY (match_id)
 );
 -- create index on home (club_id), home (match_id)
 
 CREATE TABLE away 
 (
-    match_id VARCHAR(20) REFERENCES match(match_id),
-    club_id VARCHAR(3) REFERENCES club(club_id),
+    match_id INT REFERENCES match(match_id) ON DELETE CASCADE,
+    club_id VARCHAR(3) REFERENCES club(club_id) ,
     ball_possession INT NOT NULL,
     num_of_goals INT,
     total_shots INT NOT NULL,
@@ -97,36 +90,28 @@ CREATE TABLE away
     offsides INT NOT NULL,
     fouls INT NOT NULL,
     penalties INT,
-    PRIMARY KEY (match_id, club_id)
+    PRIMARY KEY (match_id)
 );
 -- create index on home (club_id), home (match_id)
 
--- last updated on 7/6/2024: CREATE OR REPLACE TRIGGER to check that home table needs to be updated before away table
+-- last updated on 7/6/2024: create trigger to check that home table needs to be updated before away table
 CREATE OR REPLACE FUNCTION check_match()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF TG_OP = 'INSERT' THEN
-        IF (SELECT COUNT(*) FROM home WHERE home.match_id = NEW.match_id) = 0 THEN
+        IF NOT EXISTS (SELECT match_id FROM home WHERE home.match_id = NEW.match_id) THEN
             RAISE EXCEPTION 'Home table needs to be inserted first'
             USING HINT = 'Please insert data into home table first';
         END IF;
-    ELSIF TG_OP = 'DELETE' THEN
-        IF (SELECT COUNT(*) FROM home WHERE home.match_id = OLD.match_id) = 1 THEN
-            RAISE EXCEPTION 'Home table needs to be deleted first'
-            USING HINT = 'Please delete data from home table first';
-        END IF;
-    END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-
 CREATE OR REPLACE TRIGGER trigger_check_match
-BEFORE INSERT OR DELETE ON away 
+BEFORE INSERT ON away 
 FOR EACH ROW
 EXECUTE FUNCTION check_match();
 
---last updated on 1/5/2024: CREATE OR REPLACE TRIGGER to calculate ball possession
+--last updated on 1/5/2024: create trigger to calculate ball possession
 CREATE OR REPLACE FUNCTION calculate_ball_possession()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -139,6 +124,7 @@ CREATE OR REPLACE TRIGGER trigger_calculate_ball_possession
 BEFORE INSERT ON away
 FOR EACH ROW
 EXECUTE FUNCTION calculate_ball_possession();
+
 
 
 CREATE TABLE player_profile
@@ -162,55 +148,18 @@ CREATE TABLE player_role
     PRIMARY KEY (player_id, club_id, season_id)
 );
 
-CREATE TABLE player_statistic
-(
-    player_id VARCHAR(20) REFERENCES player_profile(player_id),
-    match_id VARCHAR(20) REFERENCES match(match_id),
-    rating FLOAT check (rating <= 10),
-    score INT,
-    assist INT,
-    yellow_cards INT CHECK (yellow_cards <= 1),
-    red_cards INT CHECK (red_cards <= 1),
-    PRIMARY KEY (player_id, match_id)
+CREATE TABLE squad
+(  
+    match_id INT REFERENCES match(match_id),
+    player_id	VARCHAR(6) REFERENCES player_profile(player_id),
+    time_in INT CHECK (time_in >= 0 AND time_in <= 90),	
+    time_out  INT CHECK (time_out >= 0 AND time_out <= 90),
+    yellow card	CHECK (yellow_card IN (0, 1)),
+    red card INT CHECK (red_card IN (0, 1)),
+    rating INT CHECK (rating >= 0 AND rating <= 10)
+
 );
 
--- last updated on 14/5/2024: add trigger to update number of goals in each match
-
-CREATE OR REPLACE FUNCTION calculate_goal()
-RETURNS TRIGGER AS $$
-BEGIN
-        IF (SELECT home.club_id FROM home
-            INNER JOIN player_statistic ON player_statistic.match_id = home.match_id  AND player_statistic.club_id = home.club_id
-            WHERE home.club_id = NEW.club_id) IS NOT NULL
-        THEN
-            UPDATE home
-            SET num_of_goals = SUM(player_statistic.score)
-            WHERE home.match_id = NEW.match_id;
-        ELSE
-            UPDATE away
-            SET num_of_goals = SUM(player_statistic.score)
-            WHERE match_id = NEW.match_id;
-        END IF;
-    END IF;
-
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE TRIGGER update_goals_trigger
-AFTER INSERT OR UPDATE ON player_statistic
-FOR EACH ROW
-EXECUTE FUNCTION calculate_goal();
-
-
-CREATE TABLE player_honours
-(
-    player_id VARCHAR(20) REFERENCES player_profile(player_id),
-    league_id VARCHAR(6)  REFERENCES league(league_id),
-    year INT NOT NULL,
-    honours TEXT,
-    PRIMARY KEY (player_id, league_id)
-);
 
 CREATE TABLE manager
 (
@@ -227,9 +176,9 @@ CREATE TABLE management
     PRIMARY KEY (club_id, manager_id)
 );
 
-CREATE TABLE Coaching
+CREATE TABLE coaching
 (
-    match_id VARCHAR(20) REFERENCES match(match_id),
+    match_id INT REFERENCES match(match_id),
     manager_id VARCHAR(20) REFERENCES manager(manager_id),
     yellow_cards INT,
     red_card INT,
@@ -257,92 +206,47 @@ INNER JOIN away ON match.match_id = away.match_id;
 
 CREATE INDEX match_result_idx ON match_result(match_id, home_team, away_team);
 
--- last updated on 11/6/2024: create trigger to refresh match_result
-CREATE OR REPLACE FUNCTION refresh_match_result()
-RETURNS TRIGGER AS $$
-BEGIN
-    REFRESH MATERIALIZED VIEW match_result;
-    RETURN NULL;
-END;
-$$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE TRIGGER trigger_refresh_match_result
-AFTER INSERT OR UPDATE OR DELETE ON away
-FOR EACH ROW
-EXECUTE FUNCTION refresh_match_result();
-
-
-
--- VIEW FOR SEEN LEAGUE TABLE
+-- VIEW FOR SEEN TABLE STATS
 
 -- last updated on 2/6/2024: create function for statistic some datad
-CREATE OR REPLACE FUNCTION calculate_point(var_club_id VARCHAR(3), var_league_id VARCHAR(6), var_season VARCHAR(10))
+CREATE OR REPLACE FUNCTION calculate_point(var_club_id VARCHAR(3), var_season_id VARCHAR(20))
 RETURNS INT AS $$
-DECLARE var_point INT;
+DECLARE point INT;
 BEGIN
     SELECT 
         SUM(CASE 
-            WHEN home.num_of_goals > away.num_of_goals THEN 3
-            WHEN home.num_of_goals = away.num_of_goals THEN 1
+            WHEN match_result.home_score > match_result.away_score THEN 3
+            WHEN match_result.home_score = match_result.away_score THEN 1
             ELSE 0
         END)
-    INTO var_point
+    INTO point
     FROM match_result
-    INNER JOIN club ON club.club_id = home.club_id
-    INNER JOIN league_organ ON match.season_id = league_organ.season_id
-    WHERE league_organ.league_id = var_league_id AND league_organ.season = var_season AND club.club_id = var_club_id;
-    RETURN var_point;
+    INNER JOIN match on match_result.match_id = match.match_id
+    WHERE match.season_id = var_season_id 
+    AND match_result.home_team = var_club_id OR  match_result.away_team = var_club_id ;
+    RETURN point;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION calculate_goal_diff(var_club_id VARCHAR(3), var_league_id VARCHAR(6), var_season VARCHAR(10))
+CREATE OR REPLACE FUNCTION calculate_goal_diff(var_club_id VARCHAR(3), var_season_id VARCHAR(20))
 RETURNS INT AS $$
-DECLARE var_goal_diff INT;
+DECLARE goal_diff INT;
 BEGIN
     SELECT 
-        (SUM(home.num_of_goals) - SUM(away.num_of_goals))
-    INTO var_goal_diff
-    FROM match
-    INNER JOIN home ON match.match_id = home.match_id
-    INNER JOIN away ON match.match_id = away.match_id
-    INNER JOIN club ON club.club_id = home.club_id
-    INNER JOIN league_organ ON match.season_id = league_organ.season_id
-    WHERE league_organ.league_id = var_league_id AND league_organ.season = var_season AND club.club_id = var_club_id;
-    RETURN var_goal_diff;
+        (SUM(match_result.home_score) - SUM(match_result.away_score))
+    INTO goal_diff
+    FROM match_result
+    INNER JOIN match on match_result.match_id = match.match_id
+    WHERE match.season_id = var_season_id 
+    AND match_result.home_team = var_club_id OR  match_result.away_team = var_club_id ;
+    RETURN goal_diff;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION calculate_total_goals(var_club_id VARCHAR(3), var_league_id VARCHAR(6), var_season VARCHAR(10))
-RETURNS INT AS $$
-DECLARE var_total_goals INT;
-BEGIN
-    SELECT 
-        SUM(home.num_of_goals)
-    INTO var_total_goals
-    FROM match
-    INNER JOIN home ON match.match_id = home.match_id
-    INNER JOIN away ON match.match_id = away.match_id
-    INNER JOIN club ON club.club_id = home.club_id
-    INNER JOIN league_organ ON match.season_id = league_organ.season_id
-    WHERE league_organ.league_id = var_league_id AND league_organ.season = var_season AND club.club_id = var_club_id;
-    RETURN var_total_goals;
-END;
-$$ LANGUAGE plpgsql;
-
--- last updated on 11/6/2024: create view for seen league table
-CREATE MATERIALIZED VIEW table_stats AS 
-(
-    SELECT 
-        league_organ.league_id,
-        club.club_id,
-        calculate_point(club.club_id, league_organ.league_id, league_organ.season) AS point,  
-        calculate_goal_diff(club.club_id, league_organ.league_id, league_organ.season) AS goal_diff,
-        calculate_total_goals(club.club_id, league_organ.league_id, league_organ.season) AS total_goals 
-    FROM league_organ
-    INNER JOIN participation ON league_organ.season_id = participation.season_id
-    INNER JOIN club ON participation.club_id = club.club_id  
-    ORDER BY point DESC, goal_diff DESC, total_goals DESC     
-);
+CREATE MATERIALIZED VIEW table_stat AS
+SELECT 
+    calculate_goal_diff
 
 
 
