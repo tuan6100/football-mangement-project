@@ -41,6 +41,7 @@ CREATE TABLE league_organ  -- last updated on 14/5/2024
     --  (BUNDES2324, GL0001, 2023-2024, 18/8/2023, 18/5/2024)
 );
 
+
 CREATE TABLE club
 (
     club_id VARCHAR(3) PRIMARY KEY,
@@ -66,50 +67,51 @@ CREATE TABLE home
 (
     match_id INT  REFERENCES match(match_id) ON DELETE CASCADE,
     club_id VARCHAR(3) REFERENCES club(club_id) ,
-    ball_possession INT NOT NULL,
-    num_of_goals INT NOT NULL,
-    total_shots INT NOT NULL,
-    shots_on_target INT NOT NULL,
-    corner_kicks INT NOT NULL,
-    offsides INT NOT NULL,
-    fouls INT NOT NULL,
+    ball_possession INT L,
+    num_of_goals INT ,
+    total_shots INT ,
+    shots_on_target INT ,
+    corner_kicks INT ,
+    offsides INT ,
+    fouls INT ,
     penalties INT,
     PRIMARY KEY (match_id)
 );
--- create index on home (club_id), home (match_id)
+-- create index on home (club_id)
+CREATE INDEX home_club_idx ON home (match_id, club_id);
 
 CREATE TABLE away 
 (
     match_id INT REFERENCES match(match_id) ON DELETE CASCADE,
     club_id VARCHAR(3) REFERENCES club(club_id) ,
-    ball_possession INT NOT NULL,
+    ball_possession INT ,
     num_of_goals INT,
-    total_shots INT NOT NULL,
-    shots_on_target INT NOT NULL,
-    corner_kicks INT NOT NULL,
-    offsides INT NOT NULL,
-    fouls INT NOT NULL,
+    total_shots INT ,
+    shots_on_target INT L,
+    corner_kicks INT ,
+    offsides INT ,
+    fouls INT ,
     penalties INT,
     PRIMARY KEY (match_id)
 );
--- create index on home (club_id), home (match_id)
+-- create index on away (club_id)
+CREATE INDEX away_club_idx ON away (match_id, club_id);
 
--- last updated on 7/6/2024: create trigger to check that home table needs to be updated before away table
-CREATE OR REPLACE FUNCTION check_match()
+
+-- create trigger to auto insert match_id into home and away table when inserting new match
+CREATE OR REPLACE FUNCTION update_match_id()
 RETURNS TRIGGER AS $$
 BEGIN
-        IF NOT EXISTS (SELECT match_id FROM home WHERE home.match_id = NEW.match_id) THEN
-            RAISE EXCEPTION 'Home table needs to be inserted first'
-            USING HINT = 'Please insert data into home table first';
-        END IF;
+    INSERT INTO home(match_id) VALUES (NEW.match_id);
+    NSERT INTO away(match_id) VALUES (NEW.match_id);
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE TRIGGER trigger_check_match
-BEFORE INSERT ON away 
+CREATE OR REPLACE TRIGGER trigger_update_match_id
+AFTER INSERT ON match
 FOR EACH ROW
-EXECUTE FUNCTION check_match();
+EXECUTE FUNCTION update_match_id();
 
 --last updated on 1/5/2024: create trigger to calculate ball possession
 CREATE OR REPLACE FUNCTION calculate_ball_possession()
@@ -127,6 +129,7 @@ EXECUTE FUNCTION calculate_ball_possession();
 
 
 
+
 CREATE TABLE player_profile
 (
     player_id VARCHAR(6) PRIMARY KEY,
@@ -136,6 +139,8 @@ CREATE TABLE player_profile
     height INT NOT NULL,
     freferred_foot CHAR NOT NULL CHECK (freferred_foot IN ('L', 'R'))
 );
+
+CREATE INDEX player_name_idx ON player_profile USING hash (player_name);   
 
 CREATE TABLE player_role
 (
@@ -148,17 +153,58 @@ CREATE TABLE player_role
     PRIMARY KEY (player_id, club_id, season_id)
 );
 
-CREATE TABLE squad
+CREATE TABLE match_squad
 (  
-    match_id INT REFERENCES match(match_id),
+    match_id INT REFERENCES match(match_id) ON DELETE CASCADE,
     player_id	VARCHAR(6) REFERENCES player_profile(player_id),
     time_in INT CHECK (time_in >= 0 AND time_in <= 90),	
     time_out  INT CHECK (time_out >= 0 AND time_out <= 90),
-    yellow card	CHECK (yellow_card IN (0, 1)),
-    red card INT CHECK (red_card IN (0, 1)),
-    rating INT CHECK (rating >= 0 AND rating <= 10)
-
+    yellow_card	INT CHECK (yellow_card IN (0, 1)),
+    red_card INT CHECK (red_card IN (0, 1)),
+    rating INT CHECK (rating >= 0 AND rating <= 10),
+    PRIMARY KEY (match_id, player_id)
 );
+
+CREATE TABLE player_score
+(
+    match_id INT REFERENCES match(match_id) ON DELETE CASCADE,
+    player_goal VARCHAR(6) REFERENCES player_profile(player_id),
+    player_assist VARCHAR(6) REFERENCES player_profile(player_id),
+    time_goal INT CHECK (time_goal >= 0 AND time_goal <= 90),
+    own_goal VARCHAR REFERENCES player_profile(player_id),
+    PRIMARY KEY (match_id, time_goal)
+);
+
+-- last updated on  16/6/2024 create trigger to update the number of goals for the home and away team
+CREATE OR REPLACE FUNCTION calculate_num_of_goals()
+RETURNS TRIGGER AS $$
+DECLARE
+    var_club_id VARCHAR(3);
+BEGIN
+    SELECT club_id
+    INTO var_club_id
+    FROM player_role
+    INNER JOIN match ON player_role.season_id = match.season_id
+    WHERE player_role.player_id = NEW.player_goal AND match.match_id = NEW.match_id;
+
+    -- Check if the club_id is in the home or away team
+    IF EXISTS (SELECT 1 FROM home WHERE home.match_id = NEW.match_id AND home.club_id = var_club_id) THEN
+        UPDATE home 
+        SET num_of_goals = (SELECT COUNT(*) FROM player_score WHERE player_score.match_id = NEW.match_id)
+        WHERE home.match_id = NEW.match_id;
+    ELSIF EXISTS (SELECT 1 FROM away WHERE away.match_id = NEW.match_id AND away.club_id = var_club_id) THEN
+        UPDATE away 
+        SET num_of_goals = (SELECT COUNT(*) FROM player_score WHERE player_score.match_id = NEW.match_id)
+        WHERE away.match_id = NEW.match_id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE TRIGGER trigger_calculate_num_of_goals
+AFTER INSERT ON player_score
+FOR EACH ROW
+EXECUTE FUNCTION calculate_num_of_goals();
 
 
 CREATE TABLE manager
@@ -176,14 +222,6 @@ CREATE TABLE management
     PRIMARY KEY (club_id, manager_id)
 );
 
-CREATE TABLE coaching
-(
-    match_id INT REFERENCES match(match_id),
-    manager_id VARCHAR(20) REFERENCES manager(manager_id),
-    yellow_cards INT,
-    red_card INT,
-    PRIMARY KEY (match_id, manager_id)
-);
 
 
 
@@ -204,12 +242,13 @@ FROM match
 INNER JOIN home ON match.match_id = home.match_id
 INNER JOIN away ON match.match_id = away.match_id;
 
-CREATE INDEX match_result_idx ON match_result(match_id, home_team, away_team);
+create index match_result_idx1 on match_result (match_id );
+create index match_result_idx2 on match_result (home_team);
+create index match_result_idx3 on match_result (away_team);              -- for OR operator
+create index match_result_idx4 on match_result (home_team, away_team);   -- for AND operator
 
 
--- VIEW FOR SEEN TABLE STATS
-
--- last updated on 2/6/2024: create function for statistic some datad
+-- last updated on 11/6/2024: create function to calculate point and goal difference
 CREATE OR REPLACE FUNCTION calculate_point(var_club_id VARCHAR(3), var_season_id VARCHAR(20))
 RETURNS INT AS $$
 DECLARE point INT;
@@ -244,97 +283,95 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE MATERIALIZED VIEW table_stat AS
-SELECT 
-    calculate_goal_diff
 
 
 
--- CREATE RABLE TO MANAGE PERMISSION FOR ADMINS AND GUESTS
--- last updated on 8/6/2024
-CREATE ROLE admin;
--- all permissions2
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO admin;
 
-CREATE ROLE guest;
--- read-only permissions
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO guest;
+-- -- CREATE RABLE TO MANAGE PERMISSION FOR ADMINS AND GUESTS
+-- -- last updated on 8/6/2024
+-- CREATE ROLE admin;
+-- -- all permissions2
+-- GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO admin;
 
-CREATE TABLE admins 
-(
-    admin_id SERIAL PRIMARY KEY,
-    fullnames VARCHAR(50) NOT NULL,
-    username VARCHAR(50) NOT NULL,
-    phone_number VARCHAR(15) NOT NULL,
-    email VARCHAR(50) NOT NULL,
-    password VARCHAR(255) NOT NULL
-);
-CREATE INDEX admins_idx ON admins (username);
+-- CREATE ROLE guest;
+-- -- read-only permissions
+-- GRANT SELECT ON ALL TABLES IN SCHEMA public TO guest;
 
-CREATE TABLE guests 
-(
-    guest_id SERIAL PRIMARY KEY,
-    fullnames VARCHAR(50),
-    username VARCHAR(50) NOT NULL,
-    email VARCHAR(50) NOT NULL,
-    password VARCHAR(255) NOT NULL
-);
-CREATE INDEX guests_idx ON guests (username);
+-- CREATE TABLE admins 
+-- (
+--     admin_id SERIAL PRIMARY KEY,
+--     fullnames VARCHAR(50) NOT NULL,
+--     username VARCHAR(50) NOT NULL,
+--     phone_number VARCHAR(15) NOT NULL,
+--     email VARCHAR(50) NOT NULL,
+--     password VARCHAR(255) NOT NULL
+-- );
+-- CREATE INDEX admins_idx ON admins (username);
 
--- trigger to grant permissions 
-CREATE OR REPLACE FUNCTION grant_permissions()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF TG_TABLE_NAME = 'admins' THEN
-        GRANT admin TO NEW.username;
-    ELSIF TG_TABLE_NAME = 'guests' THEN
-        GRANT guest TO NEW.username;
-    END IF;
-END;
+-- CREATE TABLE guests 
+-- (
+--     guest_id SERIAL PRIMARY KEY,
+--     fullnames VARCHAR(50),
+--     username VARCHAR(50) NOT NULL,
+--     email VARCHAR(50) NOT NULL,
+--     password VARCHAR(255) NOT NULL
+-- );
+-- CREATE INDEX guests_idx ON guests (username);
 
-CREATE OR REPLACE FUNCTION grant_permissions()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF TG_TABLE_NAME = 'admins' THEN
-        EXECUTE 'GRANT admin TO "' || NEW.username || '";';
-    ELSIF TG_TABLE_NAME = 'guests' THEN
-        EXECUTE 'GRANT guest TO "' || NEW.username || '";';
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+-- -- trigger to grant permissions 
+-- CREATE OR REPLACE FUNCTION grant_permissions()
+-- RETURNS TRIGGER AS $$
+-- BEGIN
+--     IF TG_TABLE_NAME = 'admins' THEN
+--         GRANT admin TO NEW.username;
+--     ELSIF TG_TABLE_NAME = 'guests' THEN
+--         GRANT guest TO NEW.username;
+--     END IF;
+-- END;
 
--- trigger to hash password
-CREATE OR REPLACE FUNCTION hash_password()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.password = crypt(NEW.password, gen_salt('sha256'));
-    RETURN NEW;
-END;
+-- CREATE OR REPLACE FUNCTION grant_permissions()
+-- RETURNS TRIGGER AS $$
+-- BEGIN
+--     IF TG_TABLE_NAME = 'admins' THEN
+--         EXECUTE 'GRANT admin TO "' || NEW.username || '";';
+--     ELSIF TG_TABLE_NAME = 'guests' THEN
+--         EXECUTE 'GRANT guest TO "' || NEW.username || '";';
+--     END IF;
+--     RETURN NEW;
+-- END;
+-- $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE TRIGGER trigger_hash_password_for_admins
-BEFORE INSERT OR UPDATE ON admins
-FOR EACH ROW
-EXECUTE FUNCTION hash_password();
+-- -- trigger to hash password
+-- CREATE OR REPLACE FUNCTION hash_password()
+-- RETURNS TRIGGER AS $$
+-- BEGIN
+--     NEW.password = crypt(NEW.password, gen_salt('sha256'));
+--     RETURN NEW;
+-- END;
 
-CREATE OR REPLACE TRIGGER trigger_hash_password_for_guests
-BEFORE INSERT OR UPDATE ON guests
-FOR EACH ROW
-EXECUTE FUNCTION hash_password();
+-- CREATE OR REPLACE TRIGGER trigger_hash_password_for_admins
+-- BEFORE INSERT OR UPDATE ON admins
+-- FOR EACH ROW
+-- EXECUTE FUNCTION hash_password();
 
---trigger for checking if username already exists
-CREATE OR REPLACE FUNCTION check_username()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF (SELECT COUNT(*) FROM admins WHERE admins.username = NEW.username) > 0
-    THEN
-        RAISE EXCEPTION 'Username already exists';
-    END IF;
-    RETURN NEW;
-END;
+-- CREATE OR REPLACE TRIGGER trigger_hash_password_for_guests
+-- BEFORE INSERT OR UPDATE ON guests
+-- FOR EACH ROW
+-- EXECUTE FUNCTION hash_password();
 
-CREATE OR REPLACE TRIGGER trigger_check_username_for_admins
-BEFORE INSERT OR UPDATE ON admins
-FOR EACH ROW
-EXECUTE FUNCTION check_username();
+-- --trigger for checking if username already exists
+-- CREATE OR REPLACE FUNCTION check_username()
+-- RETURNS TRIGGER AS $$
+-- BEGIN
+--     IF (SELECT COUNT(*) FROM admins WHERE admins.username = NEW.username) > 0
+--     THEN
+--         RAISE EXCEPTION 'Username already exists';
+--     END IF;
+--     RETURN NEW;
+-- END;
+
+-- CREATE OR REPLACE TRIGGER trigger_check_username_for_admins
+-- BEFORE INSERT OR UPDATE ON admins
+-- FOR EACH ROW
+-- EXECUTE FUNCTION check_username();
 
