@@ -7,7 +7,7 @@ VALUES ('6119','LIGUE12324','38','09/01/2024','Stade Bollaert-Delelis', 'Myrtle 
 -- 2. Cập nhật só liệu thống kê thu được trong các trận đấu sau mỗi trận đấu
 
 -- trigger để tự động cập nhật mã trận đấu vào bảng con
-CREATE OR REPLACE FUNCTION update_match_id()
+CREATE OR REPLACE FUNCTION UPDATE_match_id()
 RETURNS TRIGGER AS $$
 BEGIN
     INSERT INTO home(match_id) VALUES (NEW.match_id);
@@ -16,10 +16,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE TRIGGER trigger_update_match_id
+CREATE OR REPLACE TRIGGER trigger_UPDATE_match_id
 AFTER INSERT ON match
 FOR EACH ROW
-EXECUTE FUNCTION update_match_id();
+EXECUTE FUNCTION UPDATE_match_id();
 
 -- trigger để tính tỷ lể kiểm soát bóng
 CREATE OR REPLACE FUNCTION calculate_ball_possession()
@@ -91,19 +91,29 @@ EXECUTE FUNCTION calculate_num_of_goals();
 
 -- view để theo dõi tỷ số trận đấu 
 CREATE MATERIALIZED VIEW match_result AS
-SELECT 
-    match.match_id,
-    home.club_id AS home_team,  
-    home.num_of_goals AS home_score,
-    away.club_id AS away_team,
-    away.num_of_goals AS away_score
-FROM match
-INNER JOIN home ON match.match_id = home.match_id
-INNER JOIN away ON match.match_id = away.match_id;
+SELECT
+    m.match_id,
+    hm.club_id AS home_team,
+    hm.num_of_goals AS home_score,
+    am.club_id AS away_team,
+    am.num_of_goals AS away_score,
+    CASE
+        WHEN hm.num_of_goals > am.num_of_goals THEN hm.club_id
+        WHEN hm.num_of_goals < am.num_of_goals THEN am.club_id
+        ELSE 'Draw'
+    END AS match_winner
+FROM
+    match m
+    JOIN home hm ON m.match_id = hm.match_id
+    JOIN away am ON m.match_id = am.match_id; 
 
 
 
 -- 4. Cập nhật bxh sau mỗi trận đấu
+UPDATE participation SET num_of_matches = count_match_played(club_id, season_id);
+UPDATE participation SET point = calculate_point(club_id, season_id);
+UPDATE participation SET goal_diff = calculate_goal_diff(club_id, season_id);
+
 
 
 
@@ -116,6 +126,7 @@ DELETE FROM match WHERE date_of_match  = '09/01/2024' AND stadium = 'Stade Bolla
 UPDATE player_role
 SET club_id = 'RMA' AND season_id = 'LALIGA2425'
 WHERE player_id = (SELECT player_id FROM player_profile WHERE player_name = 'Killian Mbappe');
+
 
 -- 7. Thống kê tỷ lệ thắng, hòa, thua của clb
 
@@ -192,7 +203,7 @@ ORDER BY
 -- tinh tong so ban thang
 alter table player_role add column total_scores int;
 
-create or replace function update_total_goals(var_playerid varchar(6), var_seasonid varchar(20))
+create or replace function UPDATE_total_goals(var_playerid varchar(6), var_seasonid varchar(20))
 returns int as $$
 declare total int;
 begin
@@ -204,12 +215,12 @@ begin
 end;
 $$ language plpgsql;
 
-update player_role set total_goals = update_total_goals(player_id, season_id);
+UPDATE player_role SET total_goals = UPDATE_total_goals(player_id, season_id);
 
 -- tinh tong so kien tao
 alter table player_role add column total_assists int;
 
-create or replace function update_total_assists(var_playerid varchar(6), var_seasonid varchar(20))
+create or replace function UPDATE_total_assists(var_playerid varchar(6), var_seasonid varchar(20))
 returns int as $$
 declare total int;
 begin
@@ -221,7 +232,7 @@ begin
 end;
 $$ language plpgsql;
 
-update player_role set total_assists = update_total_assists(player_id, season_id);
+UPDATE player_role SET total_assists = UPDATE_total_assists(player_id, season_id);
 
 
 
@@ -251,15 +262,94 @@ AND match_squad.rating =
     WHERE match_id = '...'
 );
 
--- 11. 
+-- 11. Trả về nhà vô địch của các giải đấu
+WITH ranked_clubs AS (
+    SELECT club_id, season_id, 
+           RANK() OVER (PARTITION BY season_id ORDER BY point DESC, goal_diff DESC) AS rank
+    FROM participation
+	WHERE season_id = '...'
+)
+UPDATE participation
+SET state= 'Champion'
+WHERE (club_id, season_id) IN (
+    SELECT club_id, season_id
+    FROM ranked_clubs
+    WHERE rank = 1 
+);
 
--- 12.
+-- 12. Trả về danh sách các clb tham dự giải đấu UEFA Champion League mùa sau
+WITH ranked_clubs AS (
+    SELECT club_id, season_id, 
+           RANK() OVER (PARTITION BY season_id ORDER BY point DESC, goal_diff DESC) AS rank
+    FROM participation
+	WHERE season_id = '...'
+)
+UPDATE participation
+SET state= 'C1'
+WHERE (club_id, season_id) IN (
+    SELECT club_id, season_id
+    FROM ranked_clubs
+    WHERE rank IN (2, 3 ,4) 
+);
 
--- 13.
+-- 13. Trả về danh sách các clb tham dự giải đấu UEFA Europa League mùa sau
+WITH ranked_clubs AS (
+    SELECT club_id, season_id, 
+           RANK() OVER (PARTITION BY season_id ORDER BY point DESC, goal_diff DESC) AS rank
+    FROM participation
+	WHERE season_id = 'EPL2324'
+)
+UPDATE participation
+SET state= 'C2'
+WHERE (club_id, season_id) IN (
+    SELECT club_id, season_id
+    FROM ranked_clubs
+    WHERE rank IN (5, 6) 
+	UNION
+	SELECT match.season_id, match_result.match_winner
+	FROM match
+	INNER JOIN match_result ON match.match_id = match_result.match_id
+	INNER JOIN club ON match_result.match_winner = club.club_id
+	INNER JOIN league_organ ON match.season_id = league_organ.season_id
+	INNER JOIN league ON league_organ.league_id = league.league_id
+WHERE match.round = 'Chung kết' and league.league_id like '%0002'
+);
 
--- 14.
+-- 14. Tỉ lệ thắng thua của đội bóng A trong giải đấu B
+SELECT
+	'LIV' AS team_a,
+	'MCI' AS versus,
+    COUNT(*) AS total_matches,
+    COUNT(CASE WHEN match_winner = 'LIV' THEN 1 END) AS wins,
+    COUNT(CASE WHEN match_winner = 'MCI' THEN 1 END) AS losses,
+    COUNT(CASE WHEN match_winner = 'Draw' THEN 1 END) AS draws,
+    ROUND(COUNT(CASE WHEN match_winner = 'LIV' THEN 1 END) * 100.0 / COUNT(*), 2) AS win_percentage,
+    ROUND(COUNT(CASE WHEN match_winner = 'MCI' THEN 1 END) * 100.0 / COUNT(*), 2) AS loss_percentage
+FROM
+    match_result mr
+WHERE
+	(mr.home_team = 'LIV' AND mr.away_team = 'MCI')
+    OR (mr.home_team = 'MCI' AND mr.away_team = 'LIV');
 
--- 15. Trả về cầu thủ xuất sắc nhất giải đấu trong mùa giải
+
+
+-- 15. Trả về Tỉ lệ thắng thua của đội bóng A trong giải đấu B
+
+SELECT
+    COUNT(*) AS total_matches,
+    COUNT(CASE WHEN match_winner = 'LIV' THEN 1 END) AS wins,
+    COUNT(CASE WHEN match_winner != 'LIV' THEN 1 END) AS losses,
+    COUNT(CASE WHEN match_winner = 'Draw' THEN 1 END) AS draws,
+    ROUND(COUNT(CASE WHEN match_winner = 'LIV' THEN 1 END) * 100.0 / COUNT(*), 2) AS win_percentage,
+    ROUND(COUNT(CASE WHEN match_winner != 'LIV' THEN 1 END) * 100.0 / COUNT(*), 2) AS loss_percentage
+FROM
+    match_result mr
+	INNER JOIN match on mr.match_id = match.match_id
+WHERE
+	match.season_id = 'EPL2324' AND
+	(home_team = 'LIV' OR away_team = 'LIV');
+
+
 
 -- 16. Trả về vua phá luới của giải đấu trong mùa giải
 
@@ -283,7 +373,7 @@ AND player_role.total_goals =
 -- thêm cột total_cards vào bảng player_role
 ALTER TABLE player_role ADD column total_cards INT;
 
-CREATE FUNCTION update_total_cards()
+CREATE FUNCTION UPDATE_total_cards()
 RETURNS TRIGGER AS $$
 BEGIN
     UPDATE plater_role
@@ -293,12 +383,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trigger_update_total_card
+CREATE TRIGGER trigger_UPDATE_total_card
 AFTER INSERT OR UPDATE ON match_squad
 FOR EACH ROW
-EXECUTE FUNCTION update_total_cards();
+EXECUTE FUNCTION UPDATE_total_cards();
 
--- kiểm tra số thẻ vàng là bội của 5 hoặc có 1 thẻ đỏ ở trận trước
+-- kiểm tra số thẻ vàng là bội của 5 
 CREATE OR REPLACE FUNCTION check_cond_player()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -315,19 +405,33 @@ FOR EACH ROW
 EXECUTE FUNCTION check_cond_player();
 
 
+-- 18. Liệt kê danh sách cầu thủ thuộc biên chế CLB C? trong mùa giải L?
+
+SELECT 
+	pr.club_id, pp.player_name, pp.date_of_birth, pp.nation_id, pp.height, pr.position, pp.freferred_foot
+FROM 
+	player_role pr
+	JOIN player_profile pp ON pr.player_id = pp.player_id
+WHERE
+ 	pr.club_id = 'C?' AND pr.season_id = 'L?';
+
 
 -- 19. Liệt kê danh sách cầu thủ có quốc tịch N? và đang thi đấu ở giải đấu L?
 
+-- chua toi uu
 SELECT player_profile.player_name
 FROM player_profile
 INNER JOIN player_role ON player_profile.player_id = player_role.player_id
 INNER JOIN nation ON player_profile.nation_id = nation.nation_id
 INNER JOIN league_organ ON player_role.season_id = league_organ.season_id
 INNER JOIN league ON league_organ.league_id = league.league_id
-WHERE nation.nation_id = '...'
-AND league.league_name = '...'
+WHERE nation.nation_name = 'N?'
+AND league.league_name = 'L?'
 AND CURRENT_DATE >= league_organ.date_start;
 
+--toi uu
+CREATE INDEX idx_nation_name on nation (nation_name);
+CREATE INDEX idx_league_name on league (league_name);
 
 -- 20. Liệt kê danh sách cầu thủ dưới ... tuổi đang thi đấu ở giải đấu L?
 
@@ -358,7 +462,7 @@ FROM player_profile
 INNER JOIN player_role ON player_role.player_id = player_profile.player_id
 INNER JOIN league_organ ON player_role.season_id = league_organ.season_id
 INNER JOIN league ON league_organ.league_id = league.league_id
-WHERE player_profile.age <= 23;
+WHERE player_profile.age < 23;
 
 
 
@@ -379,10 +483,6 @@ WHERE player_profile.height =
 CREATE INDEX idx_player_height on player_profile (height);
 CREATE INDEX idx_player_position on player_role using hash (position);
 
--- Hoan
-SELECT pp.player_name, pp.height, pp.position 
-FROM player_profile pp JOIN player_role ON pr.player_id = pp.player_id
-WHERE pp.height = MAX(pp.height)
 
 
 -- 22. Liệt kê danh sách cầu thủ được chuyển nhượng sau mùa giải S?
@@ -425,17 +525,12 @@ BEGIN
         pp.player_name,
         old.club_name AS old_club_name,
         new.club_name AS new_club_name
-    FROM 
-        player_profile pp
-    INNER JOIN 
-        old_club oc ON pp.player_id = oc.player_id
-    INNER JOIN 
-        new_club nc ON pp.player_id = nc.player_id
-    INNER JOIN 
-        club old ON oc.club_id = old.club_id
+    FROM player_profile pp
+    INNER JOIN old_club oc ON pp.player_id = oc.player_id
+    INNER JOIN new_club nc ON pp.player_id = nc.player_id
+    INNER JOIN club old ON oc.club_id = old.club_id
     INNER JOIN club new ON nc.club_id = new.club_id
-    WHERE 
-        oc.club_id != nc.club_id;
+    WHERE oc.club_id != nc.club_id;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -459,10 +554,41 @@ INNER JOIN player_profile ON match_squad.player_id = player_profile.player_id
 INNER JOIN match ON match_squad.match_id = match.match_id
 INNER JOIN league_organ ON match.season_id = league_organ.season_id
 INNER JOIN league ON league_organ.league_id = league.league_id
-WHERE league.league_name = '...'
-AND league_organ.season = '...'
+WHERE league.league_name = 'L?'
+AND league_organ.season = 'S?'
 GROUP BY player_profile.player_id
 ORDER BY num_of_matches DESC LIMIT 10;
+
+
+--35. (Hoan) Top tỉ lệ cầm bóng cao nhất của giải đấu A
+
+SELECT
+    c.club_name,
+    c.club_id,
+    ROUND(AVG(ball_possession),2) AS average_ball_possession
+FROM (
+    SELECT
+        hm.club_id,
+        hm.ball_possession
+    FROM home hm
+    JOIN match m ON hm.match_id = m.match_id
+    WHERE m.season_id = 'BUNDES2324'
+    UNION ALL
+    SELECT
+        am.club_id,
+        am.ball_possession
+    FROM away am
+    JOIN match m ON am.match_id = m.match_id
+    WHERE m.season_id = 'BUNDES2324'
+) AS cm
+JOIN club c ON c.club_id = cm.club_id
+GROUP BY
+    c.club_id, 
+    c.club_name
+ORDER BY average_ball_possession DESC
+LIMIT 10;
+
+	
 
 -- 26. Liệt kê danh sách cầu thủ ghi được hattrick trong 1 trận đấu trong mùa giải S?
 
@@ -476,22 +602,18 @@ GROUP BY player_profile.player_name, match.match_id
 HAVING COUNT(player_score.player_goal) >= 3;  
 
 
--- 30. Liệt kê danh sách các CLB mà HLV M? đã chỉ đạo từ năm ? Đến nay
+-- 27. Liệt kê tỉ số của các trận đấu diễn ra trong ngày D?
 
 -- chua toi uu
-SELECT DISTINCT manager.manager_name, club.club_name
-FROM manager
-INNER JOIN management ON manager.manager_id = management.manager_id
-INNER JOIN club ON management.club_id = club.club_id
-INNER JOIN league_organ ON management.season_id = league_organ.season_id
-WHERE manager.manager_name = '...' AND league_organ.date_start >= '...' AND league_organ.date_end <= CURRENT_DATE;
+SELECT match_result.*
+FROM match_result
+INNER JOIN match ON match_result.match_id = match.match_id
+WHERE match.date_of_match = 'D?';
 
 -- toi uu
-CREATE INDEX idx_manager_name on manager (manager_name);
+CREATE INDEX idx_date on match (date_of_match);
 
-
-
---31. (Hoan) Lịch sử đối đầu của 2 đội bóng 
+--28. Lịch sử đối đầu của 2 đội bóng 
 SELECT
     m.season_id,
     m.round,
@@ -517,39 +639,60 @@ ORDER BY
 	m.round; 
 
 
+-- 29. Liệt kê danh sách những CLB vô địch từ mùa giải S? đến nay ở giải đấu L?
 
---32. (Hoan) Tỉ lệ thắng thua của đội A trước đội B
-SELECT
-	'LIV' AS team_a,
-	'MCI' AS versus,
-    COUNT(*) AS total_matches,
-    COUNT(CASE WHEN match_winner = 'LIV' THEN 1 END) AS wins,
-    COUNT(CASE WHEN match_winner = 'MCI' THEN 1 END) AS losses,
-    COUNT(CASE WHEN match_winner = 'Draw' THEN 1 END) AS draws,
-    ROUND(COUNT(CASE WHEN match_winner = 'LIV' THEN 1 END) * 100.0 / COUNT(*), 2) AS win_percentage,
-    ROUND(COUNT(CASE WHEN match_winner = 'MCI' THEN 1 END) * 100.0 / COUNT(*), 2) AS loss_percentage
-FROM
-    match_result mr
-WHERE
-	(mr.home_team = 'LIV' AND mr.away_team = 'MCI')
-    OR (mr.home_team = 'MCI' AND mr.away_team = 'LIV')
+-- chua toi uu
+SELECT club.club_name
+FROM club
+INNER JOIN participation ON club.club_id = participation.club_id
+INNER JOIN league_organ ON participation.season_id = league_organ.season_id
+INNER JOIN league ON league_organ.league_id = league.league_id
+WHERE league_organ.date_end >= 'S?' 
+AND league.league_name = 'L?'
+AND participation.state = 'Champion';
+
+-- toi uu
+CREATE INDEX idx_state on participation (state);
 
 
---33. Chiều cao trung bình của đội bóng A trong giải B
+
+-- 30. Liệt kê danh sách các CLB mà HLV M? đã chỉ đạo từ năm ? Đến nay
+
+-- chua toi uu
+SELECT DISTINCT manager.manager_name, club.club_name
+FROM manager
+INNER JOIN management ON manager.manager_id = management.manager_id
+INNER JOIN club ON management.club_id = club.club_id
+INNER JOIN league_organ ON management.season_id = league_organ.season_id
+WHERE manager.manager_name = '...' AND league_organ.date_start >= '...' AND league_organ.date_end <= CURRENT_DATE;
+
+-- toi uu
+CREATE INDEX idx_manager_name on manager (manager_name);
+
+
+
+
+
+--31. Chiều cao trung bình của đội bóng A trong giải B
 SELECT 
 	pr.club_id, AVG(pp.height) AS average_height
 FROM 
 	player_role pr 
-	JOIN player_profile pp ON pr.player_id = p.player_id
+	JOIN player_profile pp ON pr.player_id = pp.player_id
 WHERE
-	pr.club_id = 'A' AND pr.season_id = 'B'
+	pr.club_id = 'LIV' AND pr.season_id = 'EPL2324'
+GROUP BY pr.club_id;
 
 
---34. (Hoan) Trả lịch thi đấu từ ... đến ... của giải ...
+--32. Trả lịch thi đấu từ ... đến ... của giải ...
 SELECT * 
 FROM 
 	match m
 WHERE 
-	m.date_of_match BETWEEN '12/08/2023' AND '1/1/2024' AND season_id = 'EPL2324'
+	m.date_of_match BETWEEN '12/08/2023' AND '1/1/2024' AND season_id = 'EPL2324';
+
+
+
+
 
 

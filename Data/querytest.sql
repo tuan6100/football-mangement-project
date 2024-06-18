@@ -43,9 +43,9 @@ SELECT
      SUM(player_statistic.score + player_statistic.assist) as total_score_assist
 FROM player_profile
 INNER JOIN player_statistic ON player_statistic.player_id = player_profile.player_id
+INNER JOIN league_organ ON player_statisti.season_id = league_organ.season_id
 INNER JOIN match ON player_statistic.match_id = match.match_id
 where player_profile.player_name = "..." 
-      AND EXTRACT(YEAR FROM match.date_of_match) in (2023, 2024)
 GROUP BY player_profile.player_name;
 
 --5. Liệt kê các clb đã vô địch ở các giải đấu trong mua giai ...
@@ -99,20 +99,13 @@ WHERE
 --   Biết rằng điểm số được tính theo công thức = số trận thắng * 3 + số trận hòa.
     SELECT 
         club.club_name,
-        SUM(CASE 
-            WHEN home.num_of_goals > away.num_of_goals THEN 3
-            WHEN home.num_of_goals = away.num_of_goals THEN 1
-            ELSE 0
-        END) AS point,
-        COUNT(CASE WHEN home.num_of_goals > away.num_of_goals THEN 1 END) as win,
-        COUNT(CASE WHEN home.num_of_goals = away.num_of_goals THEN 1 END) as draw,
-        COUNT(CASE WHEN home.num_of_goals < away.num_of_goals THEN 1 END) as lose
-    FROM match
-    INNER JOIN home ON match.match_id = home.match_id
-    INNER JOIN away ON match.match_id = away.match_id
-    INNER JOIN club ON club.club_id = home.club_id
-    INNER JOIN league_organ ON match.season_id = league_organ.season_id
-    WHERE league_organ.season_id = '...' 
+        COUNT(CASE WHEN match_result.home_score > match_result.away_score THEN 1 END) as win,
+        COUNT(CASE WHEN match_result.home_score = match_result.away_score THEN 1 END) as draw,
+        COUNT(CASE WHEN match_result.home_score < match_result.away_score THEN 1 END) as lose
+    FROM match_result
+    INNER JOIN match ON match_result.match_id = match.match_id
+    INNER JOIN club ON club.club_id = match_result.home_team OR club.club_id = match_result.away_team
+    WHERE club.club_name = 'MCI'
     GROUP BY club.club_id;
 
 --9. In ra bảng xếp hạng của giải đấu ... trong mùa giải ... 
@@ -333,16 +326,17 @@ LEFT JOIN participation on participation ON match.parti_id = participation.parti
 WHERE participation.league_id = '...'  AND participation.season = '...';
 
 -- 23. Liệt kê cầu thủ có ... bàn thắng trở lên trong mùa giải ... ở giải đấu ...
-SELECT player_profile.player_name, club.club_name, SUM(player_statistic.score) AS 'total score'
+SELECT player_profile.player_name, club.club_name, SUM(player_statistic.score) AS total_score
 FROM player_profile
 INNER JOIN player_statistic ON player_profile.player_id = player_statistic.player_id
 INNER JOIN player_role ON player_profile.player_id = player_role.player_id
 INNER JOIN club ON club.club_id = player_role.club_id
 INNER JOIN participation ON club.club_id = participation.parti_id
-INNER JOIN league ON league.league_id = participation.parti_id
-WHERE 'total score' > ... AND participation.season = ... AND league.league_name = ...
+INNER JOIN season ON participation.season_id = season.season_id
+INNER JOIN league ON league.league_id = season.league_id
+WHERE total score > 10 AND league_organ.season = '2023-2024' AND league.league_name = 'laliga'
 GROUP BY player_profile.player_id
-ORDER BY 'total score' DESC;
+ORDER BY total score DESC;
 
 -- 24. Trung bình số bàn thắng ghi được trong 1 trận của giải đấu ... ở mùa giải ...
 SELECT player_profile.player_name, club.club_name, AVG(player_statistic.score) AS 'avg score'
@@ -369,3 +363,14 @@ GROUP BY club.club_name;
 --26. Liet ke cac tran dau co tong so ban thang ghi duoc nhieu nhat
 
 --27. Liet ke cac tran dau co ti so thang thua dam nhat
+
+SELECT player_profile.player_name, 
+COUNT(player_score.goal) + COUNT(player_score.assist) AS goals_assists,
+match_squad.rating
+FROM player_squad
+INNER JOIN match_squad ON player_score.match_id = match_squad.match_id
+INNER JOIN match ON match_squad.match_id = match.match_id
+INNER JOIN player_profile on match_squad.player_id = player_profile.player_id
+where matcch_squad.match_id = '...'
+GROUP BY player_score.player_id
+ORDER BY goals_assists desc, ratting desc limit 1;

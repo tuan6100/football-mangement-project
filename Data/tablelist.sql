@@ -53,6 +53,7 @@ CREATE TABLE club
 CREATE INDEX club_name_idx ON club USING hash (club_name);   -- last updated on 1/6/2024
 
 
+
 CREATE TABLE match     -- last updated on 14/5/2024
 (
     match_id INT SERIAL PRIMARY KEY,
@@ -150,8 +151,26 @@ CREATE TABLE player_role
     shirt_number INT NOT NULL,
     position VARCHAR(3) NOT NULL,
     contract_duration DATE,
+    total_goals INT,
+    total_assists INT,
     PRIMARY KEY (player_id, club_id, season_id)
 );
+
+CREATE OR REPLACE FUNCTION calculate_total_goals()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE player_role
+    SET total_score = total_score + 1
+    WHERE player_role.player_id = NEW.player_goal
+    AND player_role.season_id = (SELECT season_id FROM match WHERE match.match_id = NEW.match_id);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE TRIGGER trigger_calculate_total_goals
+AFTER INSERT ON player_score
+FOR EACH ROW
+EXECUTE FUNCTION calculate_total_goals();
 
 CREATE TABLE match_squad
 (  
@@ -171,7 +190,6 @@ CREATE TABLE player_score
     player_goal VARCHAR(6) REFERENCES player_profile(player_id),
     player_assist VARCHAR(6) REFERENCES player_profile(player_id),
     time_goal INT CHECK (time_goal >= 0 AND time_goal <= 90),
-    own_goal VARCHAR REFERENCES player_profile(player_id),
     PRIMARY KEY (match_id, time_goal)
 );
 
@@ -181,28 +199,48 @@ RETURNS TRIGGER AS $$
 DECLARE
     var_club_id VARCHAR(3);
 BEGIN
-    SELECT club_id
-    INTO var_club_id
-    FROM player_role
-    INNER JOIN match ON player_role.season_id = match.season_id
-    WHERE player_role.player_id = NEW.player_goal AND match.match_id = NEW.match_id;
-
     -- Check if the club_id is in the home or away team
-    IF EXISTS (SELECT 1 FROM home WHERE home.match_id = NEW.match_id AND home.club_id = var_club_id) THEN
-        UPDATE home 
-        SET num_of_goals = (SELECT COUNT(*) FROM player_score WHERE player_score.match_id = NEW.match_id)
-        WHERE home.match_id = NEW.match_id;
-    ELSIF EXISTS (SELECT 1 FROM away WHERE away.match_id = NEW.match_id AND away.club_id = var_club_id) THEN
-        UPDATE away 
-        SET num_of_goals = (SELECT COUNT(*) FROM player_score WHERE player_score.match_id = NEW.match_id)
-        WHERE away.match_id = NEW.match_id;
+    IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN
+        SELECT club_id
+        INTO var_club_id
+        FROM player_role
+        INNER JOIN match ON player_role.season_id = match.season_id
+        WHERE player_role.player_id = NEW.player_goal AND match.match_id = NEW.match_id;
+
+        IF EXISTS (SELECT 1 FROM home WHERE home.match_id = NEW.match_id AND home.club_id = var_club_id) THEN
+            UPDATE home 
+            SET num_of_goals = num_of_goals + 1 
+            WHERE home.match_id = NEW.match_id;
+         ELSIF EXISTS (SELECT 1 FROM away WHERE away.match_id = NEW.match_id AND away.club_id = var_club_id) THEN
+            UPDATE away 
+            SET num_of_goals = num_of_goals + 1 
+            WHERE away.match_id = NEW.match_id;
+        END IF;
+    
+    ELSIF TG_OP = 'DELETE' THEN
+        SELECT club_id
+        INTO var_club_id
+        FROM player_role
+        INNER JOIN match ON player_role.season_id = match.season_id
+        WHERE player_role.player_id = OLD.player_goal AND match.match_id = OLD.match_id;
+
+        IF EXISTS (SELECT 1 FROM home WHERE home.match_id = OLD.match_id AND home.club_id = var_club_id) THEN
+            UPDATE home 
+            SET num_of_goals = num_of_goals - 1 
+            WHERE home.match_id = OLD.match_id;
+         ELSIF EXISTS (SELECT 1 FROM away WHERE away.match_id = OLD.match_id AND away.club_id = var_club_id) THEN
+            UPDATE away 
+            SET num_of_goals = num_of_goals - 1 
+            WHERE away.match_id = OLD.match_id;
+        END IF;
     END IF;
+    REFRESH MATERIALIZED VIEW match_result;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE TRIGGER trigger_calculate_num_of_goals
-AFTER INSERT ON player_score
+AFTER INSERT OR DELETE OR UPDATE ON player_score
 FOR EACH ROW
 EXECUTE FUNCTION calculate_num_of_goals();
 
@@ -211,41 +249,28 @@ CREATE TABLE manager
 (
     manager_id VARCHAR(20) PRIMARY KEY,
     manager_name VARCHAR(255) NOT NULL,
-    age INT NOT NULL
+    date_of_birth VARCHAR NOT NULL
 );
 
 CREATE TABLE management
 (
     club_id VARCHAR(3) REFERENCES club(club_id),
     manager_id VARCHAR(20) REFERENCES manager(manager_id),
-    year INT NOT NULL,
-    PRIMARY KEY (club_id, manager_id)
+    season_id VARCHAR(20) REFERENCES league_organ(season_id),
+    PRIMARY KEY (club_id, manager_id, season_id)
 );
 
 
-
-
--- CREATE VIEWS --
--- last updated on 27/4/2024 
-
--- VIEW FOR SEEN MATCH RESULT
-
--- last updated on 11/6/2024: create view to seen match result
-CREATE MATERIALIZED VIEW match_result AS
-SELECT 
-    match.match_id,
-    home.club_id AS home_team,  
-    home.num_of_goals AS home_score,
-    away.club_id AS away_team,
-    away.num_of_goals AS away_score
-FROM match
-INNER JOIN home ON match.match_id = home.match_id
-INNER JOIN away ON match.match_id = away.match_id;
-
-create index match_result_idx1 on match_result (match_id );
-create index match_result_idx2 on match_result (home_team);
-create index match_result_idx3 on match_result (away_team);              -- for OR operator
-create index match_result_idx4 on match_result (home_team, away_team);   -- for AND operator
+CREATE TABLE participation
+(
+    club_id VARCHAR(3) REFERENCES club(club_id),
+    season_id VARCHAR(20) REFERENCES league_organ(season_id),
+    num_of_matches INT,
+    point INT,
+    goal_diff INT,
+    state TEXT,
+    PRIMARY KEY (club_id, season_id)
+);
 
 
 -- last updated on 11/6/2024: create function to calculate point and goal difference
@@ -283,6 +308,49 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION count_match_played(var_club_id VARCHAR(3), var_season_id VARCHAR(20))
+RETURNS INT AS $$
+DECLARE num INT;
+BEGIN
+    SELECT 
+        COUNT(match_result.match_id)
+    INTO num
+    FROM match_result
+    INNER JOIN match on match_result.match_id = match.match_id
+    WHERE match.season_id = var_season_id
+    AND match_result.home_team = var_club_id OR  match_result.away_team = var_club_id ;
+    RETURN num;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- CREATE VIEWS --
+-- last updated on 27/4/2024 
+
+-- VIEW FOR SEEN MATCH RESULT
+
+-- last updated on 11/6/2024: create view to seen match result
+CREATE MATERIALIZED VIEW match_result AS
+SELECT
+    m.match_id,
+    hm.club_id AS home_team,
+    hm.num_of_goals AS home_score,
+    am.club_id AS away_team,
+    am.num_of_goals AS away_score,
+    CASE
+        WHEN hm.num_of_goals > am.num_of_goals THEN hm.club_id
+        WHEN hm.num_of_goals < am.num_of_goals THEN am.club_id
+        ELSE 'Draw'
+    END AS match_winner
+FROM
+    match m
+    JOIN home hm ON m.match_id = hm.match_id
+    JOIN away am ON m.match_id = am.match_id; 
+
+create index match_result_idx1 on match_result (match_id );
+create index match_result_idx2 on match_result (home_team);
+create index match_result_idx3 on match_result (away_team);              -- for OR operator
+create index match_result_idx4 on match_result (home_team, away_team);   -- for AND operator
 
 
 
